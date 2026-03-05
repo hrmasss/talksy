@@ -28,7 +28,10 @@ def main():
                     key, value = line.split("=", 1)
                     env[key.strip()] = value.strip()
     
-    api_port = env.get("API_PORT", "8000")
+    api_port = env.get("PORT", "8000")
+    
+    # Set PYTHONPATH so imports work correctly
+    env["PYTHONPATH"] = str(backend_dir)
     
     print("\n" + "=" * 50)
     print("  Talksy Development Server")

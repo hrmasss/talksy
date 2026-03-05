@@ -28,55 +28,50 @@ const recentActivity = [
 
 export default function AdminDashboard() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           Overview of your platform activity
         </p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Stats Grid - Compact */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.label}
-              </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">
-                {stat.change} from last month
-              </p>
-            </CardContent>
+          <Card key={stat.label} className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">{stat.label}</p>
+                <p className="text-xl font-semibold">{stat.value}</p>
+              </div>
+              <stat.icon className="h-5 w-5 text-muted-foreground/50" />
+            </div>
           </Card>
         ))}
       </div>
 
       {/* Recent Activity */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent Activity</CardTitle>
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 pb-3 pt-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead className="text-right">Time</TableHead>
+                <TableHead className="h-8 text-xs">User</TableHead>
+                <TableHead className="h-8 text-xs">Action</TableHead>
+                <TableHead className="h-8 text-xs text-right">Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {recentActivity.map((activity, i) => (
                 <TableRow key={i}>
-                  <TableCell className="font-medium">{activity.user}</TableCell>
-                  <TableCell>{activity.action}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="secondary" className="font-normal">
+                  <TableCell className="py-2 text-sm">{activity.user}</TableCell>
+                  <TableCell className="py-2 text-sm">{activity.action}</TableCell>
+                  <TableCell className="py-2 text-right">
+                    <Badge variant="secondary" className="text-xs font-normal">
                       {activity.time}
                     </Badge>
                   </TableCell>
@@ -87,23 +82,23 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Quick Actions */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* Quick Actions - Compact */}
+      <div className="grid gap-3 sm:grid-cols-3">
         <Card className="cursor-pointer transition-colors hover:bg-accent/50">
-          <CardContent className="flex flex-col items-center justify-center py-6">
-            <RiUser3Line className="h-8 w-8 text-muted-foreground mb-2" />
+          <CardContent className="flex items-center gap-3 p-3">
+            <RiUser3Line className="h-5 w-5 text-muted-foreground" />
             <span className="text-sm font-medium">Add User</span>
           </CardContent>
         </Card>
         <Card className="cursor-pointer transition-colors hover:bg-accent/50">
-          <CardContent className="flex flex-col items-center justify-center py-6">
-            <RiBookLine className="h-8 w-8 text-muted-foreground mb-2" />
+          <CardContent className="flex items-center gap-3 p-3">
+            <RiBookLine className="h-5 w-5 text-muted-foreground" />
             <span className="text-sm font-medium">Create Exam</span>
           </CardContent>
         </Card>
         <Card className="cursor-pointer transition-colors hover:bg-accent/50">
-          <CardContent className="flex flex-col items-center justify-center py-6">
-            <RiQuestionLine className="h-8 w-8 text-muted-foreground mb-2" />
+          <CardContent className="flex items-center gap-3 p-3">
+            <RiQuestionLine className="h-5 w-5 text-muted-foreground" />
             <span className="text-sm font-medium">Add Question</span>
           </CardContent>
         </Card>

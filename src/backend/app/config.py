@@ -15,7 +15,6 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        env_prefix="TALKSY_",
     )
 
     # App
@@ -30,14 +29,14 @@ class Settings(BaseSettings):
     port: int = 8000
     reload: bool = True
 
-    # Database
-    db_engine: Literal["sqlite", "postgres"] = "sqlite"
+    # Database - PostgreSQL is primary, SQLite for dev convenience
+    db_engine: Literal["sqlite", "postgres"] = "postgres"
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "talksy"
-    db_user: str = "talksy"
-    db_password: str = ""
-    db_sqlite_path: str = "talksy.db"
+    db_user: str = "postgres"
+    db_password: str = "postgres"
+    db_sqlite_path: str = Field(default="")
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -67,12 +66,21 @@ class Settings(BaseSettings):
             return base / "templates"
         return Path(v)
 
+    @field_validator("db_sqlite_path", mode="before")
+    @classmethod
+    def set_sqlite_path(cls, v, info):
+        if not v:
+            # Default to project root
+            base = Path(__file__).parent.parent.parent.parent.resolve()
+            return str(base / "talksy.db")
+        return v
+
     @property
     def database_url(self) -> str:
         """Generate database URL based on engine type."""
         if self.db_engine == "sqlite":
             return f"sqlite:///{self.db_sqlite_path}"
-        return f"postgres://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
     @property
     def is_development(self) -> bool:

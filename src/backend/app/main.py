@@ -2,7 +2,8 @@
 
 from pathlib import Path
 
-from litestar import Litestar
+from litestar import Litestar, get
+from litestar.response import Redirect
 from litestar.config.cors import CORSConfig
 from litestar.config.compression import CompressionConfig
 from litestar.openapi import OpenAPIConfig
@@ -15,6 +16,12 @@ from app.config import settings
 from app.core.logging import setup_logging, logger
 from app.api.health import HealthController
 from app.api.v1 import api_v1_router
+
+
+@get("/", include_in_schema=False)
+async def root_redirect() -> Redirect:
+    """Redirect root to API documentation."""
+    return Redirect(path="/docs")
 
 
 def create_app() -> Litestar:
@@ -35,6 +42,8 @@ def create_app() -> Litestar:
     compression_config = CompressionConfig(backend="gzip", minimum_size=1000)
     
     # OpenAPI configuration with Stoplight Elements
+    # The `path` sets the root for all OpenAPI endpoints
+    # First render plugin is also served at the root path
     openapi_config = OpenAPIConfig(
         title="Talksy API",
         description="""
@@ -61,11 +70,11 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
         contact={"name": "Talksy Support", "email": "support@talksy.app"},
         license={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
         render_plugins=[
-            StoplightRenderPlugin(path="/docs"),
-            SwaggerRenderPlugin(path="/docs/swagger"),
-            RedocRenderPlugin(path="/docs/redoc"),
+            StoplightRenderPlugin(),  # Served at /docs (root) and /docs/elements
+            SwaggerRenderPlugin(path="/swagger"),
+            RedocRenderPlugin(path="/redoc"),
         ],
-        path="/api/openapi.json",
+        path="/docs",  # Root path for OpenAPI - JSON at /docs/openapi.json
         use_handler_docstrings=True,
     )
     
@@ -77,6 +86,7 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
     
     # Route handlers
     route_handlers = [
+        root_redirect,
         HealthController,
         api_v1_router,
     ]

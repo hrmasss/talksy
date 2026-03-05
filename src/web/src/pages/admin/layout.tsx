@@ -32,71 +32,75 @@ export default function AdminLayout() {
 
   return (
     <div className="flex min-h-screen bg-muted/30">
-      {/* Sidebar */}
-      <aside className="hidden w-56 flex-col border-r border-border/50 bg-background lg:flex">
-        <div className="flex h-14 items-center border-b border-border/50 px-6">
-          <Link to="/admin" className="text-lg font-semibold tracking-tight">
-            Talksy Admin
-          </Link>
-        </div>
-        <nav className="flex-1 space-y-1 p-4">
-          {navItems.map((item) => (
-            <Link key={item.path} to={item.path}>
+      {/* Sidebar - Fixed */}
+      <aside className="hidden w-52 shrink-0 lg:block">
+        <div className="fixed top-0 left-0 flex h-screen w-52 flex-col border-r border-border/50 bg-background">
+          <div className="flex h-12 items-center border-b border-border/50 px-4">
+            <Link to="/admin" className="text-base font-semibold tracking-tight">
+              Talksy Admin
+            </Link>
+          </div>
+          <nav className="flex-1 space-y-0.5 p-2">
+            {navItems.map((item) => (
+              <Link key={item.path} to={item.path}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "w-full justify-start gap-2 text-muted-foreground h-8",
+                    location.pathname === item.path &&
+                      "bg-accent text-foreground"
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Button>
+              </Link>
+            ))}
+          </nav>
+          <div className="border-t border-border/50 p-2">
+            <Link to="/">
               <Button
                 variant="ghost"
-                className={cn(
-                  "w-full justify-start gap-3 text-muted-foreground",
-                  location.pathname === item.path &&
-                    "bg-accent text-foreground"
-                )}
+                size="sm"
+                className="w-full justify-start gap-2 text-muted-foreground h-8"
               >
-                <item.icon className="h-4 w-4" />
-                {item.label}
+                <RiLogoutBoxLine className="h-4 w-4" />
+                Back to Site
               </Button>
             </Link>
-          ))}
-        </nav>
-        <div className="border-t border-border/50 p-4">
-          <Link to="/">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground"
-            >
-              <RiLogoutBoxLine className="h-4 w-4" />
-              Back to Site
-            </Button>
-          </Link>
+          </div>
         </div>
       </aside>
 
       {/* Main */}
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border/50 bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="flex items-center gap-4 lg:hidden">
-            <Link to="/admin" className="text-lg font-semibold tracking-tight">
+            <Link to="/admin" className="text-base font-semibold tracking-tight">
               Talksy Admin
             </Link>
           </div>
           <div className="flex-1" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-sm">
+              <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
                     A
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem className="gap-2">
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem className="gap-2 text-sm">
                 <RiSettingsLine className="h-4 w-4" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <Link to="/">
-                <DropdownMenuItem className="gap-2">
+                <DropdownMenuItem className="gap-2 text-sm">
                   <RiLogoutBoxLine className="h-4 w-4" />
                   Sign Out
                 </DropdownMenuItem>
@@ -106,7 +110,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4">
           <Outlet />
         </main>
       </div>
