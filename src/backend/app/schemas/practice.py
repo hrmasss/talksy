@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
-
 from app.schemas.base import BaseSchema
-
+from pydantic import Field
 
 # ── Topic Generation ──────────────────────────────────────────────
 

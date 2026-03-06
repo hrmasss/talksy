@@ -1,14 +1,15 @@
 """Script to create database tables."""
 
 import asyncio
+
 from app.db.tables import (
-    User,
-    Exam,
-    Question,
-    ExamAttempt,
     Answer,
-    ConversationSession,
     ConversationMessage,
+    ConversationSession,
+    Exam,
+    ExamAttempt,
+    Question,
+    User,
 )
 
 

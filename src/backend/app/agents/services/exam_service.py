@@ -6,10 +6,11 @@ Bridges the LangGraph exam workflow with the HTTP API and Piccolo ORM.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.logging import logger
-from ..exam.graph import start_exam, submit_answer, get_exam_state
+
+from ..exam.graph import get_exam_state, start_exam, submit_answer
 from ..exam.state import DIFFICULTY_PRESETS
 
 
@@ -27,7 +28,7 @@ class ExamService:
         difficulty: str = "intermediate",
         target_band: float | None = None,
         topic: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Kick off a new exam session and return the first question.
 
         Parameters
@@ -51,7 +52,7 @@ class ExamService:
 
         thread_id = f"exam_{user_id}_{uuid.uuid4().hex[:8]}"
 
-        initial_state: Dict[str, Any] = {
+        initial_state: dict[str, Any] = {
             "user_id": user_id,
             "exam_type": exam_type,
             "section": section,
@@ -84,7 +85,7 @@ class ExamService:
         *,
         thread_id: str,
         answer: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Submit the candidate's answer and get the next question (or final report).
 
         Returns a dict whose ``status`` field is one of:
@@ -98,7 +99,7 @@ class ExamService:
             return self._format_final_report(result, thread_id)
         return self._format_question_response(result, thread_id)
 
-    async def get_session_state(self, *, thread_id: str) -> Dict[str, Any]:
+    async def get_session_state(self, *, thread_id: str) -> dict[str, Any]:
         """Return the current public state of an exam session."""
         state = await get_exam_state(thread_id=thread_id)
         if state is None:
@@ -112,7 +113,7 @@ class ExamService:
     # ── private helpers ───────────────────────────────────────────
 
     @staticmethod
-    def _format_question_response(state: Dict[str, Any], thread_id: str) -> Dict[str, Any]:
+    def _format_question_response(state: dict[str, Any], thread_id: str) -> dict[str, Any]:
         questions = state.get("questions", [])
         idx = state.get("current_question_index", 0)
         current_q = questions[idx] if idx < len(questions) else None
@@ -128,7 +129,7 @@ class ExamService:
         }
 
     @staticmethod
-    def _format_final_report(state: Dict[str, Any], thread_id: str) -> Dict[str, Any]:
+    def _format_final_report(state: dict[str, Any], thread_id: str) -> dict[str, Any]:
         return {
             "thread_id": thread_id,
             "status": "completed",

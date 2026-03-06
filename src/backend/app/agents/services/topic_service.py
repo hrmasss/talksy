@@ -7,9 +7,10 @@ know about graph internals.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.logging import logger
+
 from ..topic_generator.graph import run_topic_generator, stream_topic_generator
 
 
@@ -24,8 +25,8 @@ class TopicGeneratorService:
         target_score: float | None = None,
         current_level_description: str | None = None,
         section_focus: str | None = None,
-        preferences: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
+        preferences: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Run the full topic-generation pipeline and return the result.
 
         Returns a dict with keys:
@@ -36,7 +37,7 @@ class TopicGeneratorService:
         """
         thread_id = f"topics_{user_id}_{uuid.uuid4().hex[:8]}"
 
-        initial: Dict[str, Any] = {
+        initial: dict[str, Any] = {
             "user_id": user_id,
             "target_exam": target_exam,
             "target_score": target_score,
@@ -80,12 +81,12 @@ class TopicGeneratorService:
         target_score: float | None = None,
         current_level_description: str | None = None,
         section_focus: str | None = None,
-        preferences: Dict[str, Any] | None = None,
+        preferences: dict[str, Any] | None = None,
     ):
         """Yield intermediate states for streaming UX."""
         thread_id = f"topics_{user_id}_{uuid.uuid4().hex[:8]}"
 
-        initial: Dict[str, Any] = {
+        initial: dict[str, Any] = {
             "user_id": user_id,
             "target_exam": target_exam,
             "target_score": target_score,

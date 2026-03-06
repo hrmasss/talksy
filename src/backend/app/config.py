@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     serper_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
+    embedding_provider: Literal["openai", "google", "huggingface"] = "openai"
+    huggingface_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # Qdrant – long-term memory vector store
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = ""
+    qdrant_collection_prefix: str = "talksy"
+    qdrant_embedding_dim: int = 1536  # auto-resolved per provider
 
     # AI Database (for LangGraph checkpointer)
     ai_db_uri: str = ""

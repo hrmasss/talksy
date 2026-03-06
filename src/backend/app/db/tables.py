@@ -3,19 +3,19 @@
 from datetime import datetime
 from enum import Enum
 
-from piccolo.table import Table
 from piccolo.columns import (
+    JSON,
     UUID,
-    Varchar,
-    Text,
-    Timestamp,
     Boolean,
-    Integer,
     Float,
     ForeignKey,
-    JSON,
+    Integer,
+    Text,
+    Timestamp,
+    Varchar,
 )
 from piccolo.columns.defaults.timestamp import TimestampNow
+from piccolo.table import Table
 
 
 class UserRole(str, Enum):

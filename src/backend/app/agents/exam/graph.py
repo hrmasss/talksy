@@ -8,22 +8,21 @@ Flow (with interrupt for candidate input):
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
 from ..common.checkpointer import get_checkpointer
 from .nodes import (
-    initialise_exam_node,
-    generate_question_node,
-    process_answer_node,
     evaluate_answer_node,
     final_evaluation_node,
+    generate_question_node,
+    initialise_exam_node,
+    process_answer_node,
     route_after_answer,
     route_after_evaluation,
 )
 from .state import ExamState
-
 
 # ---------------------------------------------------------------------------
 # Graph definition
@@ -80,7 +79,7 @@ async def _ensure_graph():
     return _graph
 
 
-def _config(thread_id: str) -> Dict[str, Any]:
+def _config(thread_id: str) -> dict[str, Any]:
     return {
         "configurable": {"thread_id": thread_id},
         "recursion_limit": 80,
@@ -92,9 +91,9 @@ def _config(thread_id: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 async def start_exam(
-    initial_state: Dict[str, Any],
+    initial_state: dict[str, Any],
     thread_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Start a new exam session.  Returns state after the first question
     is generated (graph pauses at ``process_answer``)."""
     g = await _ensure_graph()
@@ -105,7 +104,7 @@ async def start_exam(
 async def submit_answer(
     answer: str,
     thread_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Resume the graph with the candidate's answer.
 
     The graph was paused at ``process_answer``.  We update state with
@@ -123,7 +122,7 @@ async def submit_answer(
     return result
 
 
-async def get_exam_state(thread_id: str) -> Dict[str, Any] | None:
+async def get_exam_state(thread_id: str) -> dict[str, Any] | None:
     """Retrieve the current state snapshot for a given exam thread."""
     g = await _ensure_graph()
     config = _config(thread_id)

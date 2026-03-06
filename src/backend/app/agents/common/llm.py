@@ -6,9 +6,8 @@ API keys, base URLs and default models are configured once.
 
 from __future__ import annotations
 
-from langchain_openai import ChatOpenAI
-
 from app.config import settings
+from langchain_openai import ChatOpenAI
 
 
 def _resolve_model(model: str | None) -> str:

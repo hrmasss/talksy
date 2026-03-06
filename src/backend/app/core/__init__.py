@@ -1,5 +1,5 @@
 """Core utilities and shared components."""
 
-from app.core.logging import setup_logging, logger
+from app.core.logging import logger, setup_logging
 
-__all__ = ["setup_logging", "logger"]
+__all__ = ["logger", "setup_logging"]

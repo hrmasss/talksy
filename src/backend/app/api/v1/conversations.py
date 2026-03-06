@@ -1,18 +1,18 @@
 """Conversation API endpoints."""
 
+from datetime import UTC
 from uuid import UUID
 
-from litestar import Controller, get, post
-from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
-
 from app.schemas.conversation import (
-    ConversationStart,
     ConversationMessage,
+    ConversationMessageResponse,
     ConversationResponse,
     ConversationSessionResponse,
-    ConversationMessageResponse,
+    ConversationStart,
 )
 from app.services.conversation import conversation_service
+from litestar import Controller, get, post
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 
 class ConversationController(Controller):
@@ -66,8 +66,8 @@ class ConversationController(Controller):
     ) -> ConversationResponse:
         """Send a message and get AI response."""
         # TODO: Get user_id from authentication
+        from datetime import datetime
         from uuid import uuid4
-        from datetime import datetime, timezone
         user_id = uuid4()  # Placeholder
 
         result = await conversation_service.send_message(session_id, user_id, data)
@@ -78,7 +78,7 @@ class ConversationController(Controller):
                 role="assistant",
                 content=result["ai_message"]["content"],
                 audio_url=None,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 analysis={},
             ),
             suggestions=result.get("suggestions", []),

@@ -6,10 +6,11 @@ from uuid import UUID, uuid4
 
 from app.core.exceptions import NotFoundException
 from app.core.logging import logger
-from app.db.tables import ConversationSession, ConversationMessage
-from app.schemas.conversation import ConversationStart, ConversationMessage as ConversationMessageSchema
-from app.services.base import BaseService
+from app.db.tables import ConversationMessage, ConversationSession
+from app.schemas.conversation import ConversationMessage as ConversationMessageSchema
+from app.schemas.conversation import ConversationStart
 from app.services.ai import ai_service
+from app.services.base import BaseService
 
 
 class ConversationService(BaseService[ConversationSession]):

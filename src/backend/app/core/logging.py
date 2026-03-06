@@ -3,9 +3,8 @@
 import sys
 from typing import Any
 
-from loguru import logger
-
 from app.config import settings
+from loguru import logger
 
 
 def setup_logging() -> None:
@@ -72,4 +71,4 @@ def log_response(status_code: int, duration_ms: float) -> None:
     getattr(logger, level.lower())(f"Response: {status_code} ({duration_ms:.2f}ms)")
 
 
-__all__ = ["logger", "setup_logging", "log_request", "log_response"]
+__all__ = ["log_request", "log_response", "logger", "setup_logging"]

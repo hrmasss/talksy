@@ -3,9 +3,8 @@
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 
-from piccolo.table import Table
-
 from app.core.logging import logger
+from piccolo.table import Table
 
 T = TypeVar("T", bound=Table)
 

@@ -6,14 +6,13 @@ Flow:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 
 from ..common.checkpointer import get_checkpointer
 from .nodes import assess_level_node, generate_topics_node
 from .state import TopicGeneratorState
-
 
 # ---------------------------------------------------------------------------
 # Router
@@ -66,7 +65,7 @@ async def _ensure_graph():
     return _graph
 
 
-def _config(thread_id: str) -> Dict[str, Any]:
+def _config(thread_id: str) -> dict[str, Any]:
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
 
 
@@ -75,7 +74,7 @@ def _config(thread_id: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 async def run_topic_generator(
-    initial_state: Dict[str, Any],
+    initial_state: dict[str, Any],
     thread_id: str | None = None,
 ) -> TopicGeneratorState:
     """Run the full topic-generation workflow and return final state."""
@@ -85,7 +84,7 @@ async def run_topic_generator(
 
 
 async def stream_topic_generator(
-    initial_state: Dict[str, Any],
+    initial_state: dict[str, Any],
     thread_id: str | None = None,
 ):
     """Yield intermediate states during topic generation."""

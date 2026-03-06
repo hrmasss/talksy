@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Question generation
@@ -22,19 +21,19 @@ class ExamQuestion(BaseModel):
     question_type: str = Field(
         description="e.g. 'cue_card', 'discussion', 'essay', 'multiple_choice', …"
     )
-    time_limit_seconds: Optional[int] = Field(
+    time_limit_seconds: int | None = Field(
         None, description="Time limit for this question"
     )
-    cue_card: Optional[str] = Field(
+    cue_card: str | None = Field(
         None, description="Cue card content (Speaking Part 2 only)"
     )
-    options: Optional[List[str]] = Field(
+    options: list[str] | None = Field(
         None, description="Answer options (reading/listening MCQ)"
     )
-    correct_answer: Optional[str] = Field(
+    correct_answer: str | None = Field(
         None, description="Correct answer (reading/listening only)"
     )
-    scoring_notes: Optional[str] = Field(
+    scoring_notes: str | None = Field(
         None, description="Notes for the evaluator on what to look for"
     )
 
@@ -67,13 +66,13 @@ class AnswerEvaluation(BaseModel):
         ge=0, le=9,
         description="Grammatical Range and Accuracy",
     )
-    pronunciation: Optional[float] = Field(
+    pronunciation: float | None = Field(
         None, ge=0, le=9,
         description="Pronunciation (Speaking only)",
     )
-    strengths: List[str] = Field(default_factory=list)
-    weaknesses: List[str] = Field(default_factory=list)
-    suggestions: List[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
     feedback: str = Field(description="Detailed narrative feedback")
 
 
@@ -92,19 +91,19 @@ class SectionScore(BaseModel):
 class FinalExamReport(BaseModel):
     """Comprehensive IELTS exam evaluation."""
 
-    individual_evaluations: List[AnswerEvaluation] = Field(
+    individual_evaluations: list[AnswerEvaluation] = Field(
         description="Per-question evaluations"
     )
-    section_scores: List[SectionScore] = Field(
+    section_scores: list[SectionScore] = Field(
         description="Per-section band scores"
     )
     overall_band: float = Field(
         ge=0, le=9,
         description="Overall IELTS band score (average of sections, rounded to nearest 0.5)",
     )
-    strengths: List[str] = Field(default_factory=list)
-    weaknesses: List[str] = Field(default_factory=list)
-    recommendations: List[str] = Field(
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(
         default_factory=list,
         description="Actionable study recommendations",
     )

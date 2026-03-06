@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-
 # ============================================================================
 # Speaking Examiner
 # ============================================================================

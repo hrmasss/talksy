@@ -2,20 +2,19 @@
 
 from pathlib import Path
 
-from litestar import Litestar, get
-from litestar.response import Redirect
-from litestar.config.cors import CORSConfig
-from litestar.config.compression import CompressionConfig
-from litestar.openapi import OpenAPIConfig
-from litestar.openapi.plugins import StoplightRenderPlugin, SwaggerRenderPlugin, RedocRenderPlugin
-from litestar.static_files import create_static_files_router
-from litestar.middleware.logging import LoggingMiddlewareConfig
-
 from app import __version__
-from app.config import settings
-from app.core.logging import setup_logging, logger
 from app.api.health import HealthController
 from app.api.v1 import api_v1_router
+from app.config import settings
+from app.core.logging import logger, setup_logging
+from litestar import Litestar, get
+from litestar.config.compression import CompressionConfig
+from litestar.config.cors import CORSConfig
+from litestar.middleware.logging import LoggingMiddlewareConfig
+from litestar.openapi import OpenAPIConfig
+from litestar.openapi.plugins import RedocRenderPlugin, StoplightRenderPlugin, SwaggerRenderPlugin
+from litestar.response import Redirect
+from litestar.static_files import create_static_files_router
 
 
 @get("/", include_in_schema=False)

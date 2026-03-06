@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Level assessment
@@ -20,11 +19,11 @@ class LevelAssessment(BaseModel):
     band_range: str = Field(
         description="Band range bucket, e.g. '5.0-5.5', '6.0-6.5'"
     )
-    strengths: List[str] = Field(
+    strengths: list[str] = Field(
         default_factory=list,
         description="Skills / areas the user is already good at",
     )
-    weaknesses: List[str] = Field(
+    weaknesses: list[str] = Field(
         default_factory=list,
         description="Skills / areas that need improvement",
     )
@@ -44,14 +43,14 @@ class SpeakingTopic(BaseModel):
 
     part: Literal[1, 2, 3] = Field(description="IELTS Speaking part (1, 2 or 3)")
     topic: str = Field(description="Topic title, e.g. 'Hobbies and Leisure'")
-    cue_card: Optional[str] = Field(
+    cue_card: str | None = Field(
         None,
         description="Cue card text (Part 2 only)",
     )
-    questions: List[str] = Field(
+    questions: list[str] = Field(
         description="Follow-up or discussion questions"
     )
-    vocabulary_hints: List[str] = Field(
+    vocabulary_hints: list[str] = Field(
         default_factory=list,
         description="Key vocabulary useful for this topic",
     )
@@ -72,11 +71,11 @@ class WritingTopic(BaseModel):
         description="e.g. 'bar chart', 'line graph', 'opinion essay', 'discussion essay'"
     )
     prompt: str = Field(description="Full writing prompt / task description")
-    sample_outline: Optional[str] = Field(
+    sample_outline: str | None = Field(
         None,
         description="Suggested paragraph outline for guidance",
     )
-    key_vocabulary: List[str] = Field(default_factory=list)
+    key_vocabulary: list[str] = Field(default_factory=list)
     target_band: str = Field(description="Target band range")
 
 
@@ -88,7 +87,7 @@ class ReadingTopic(BaseModel):
     """A reading passage theme with sample question types."""
 
     passage_theme: str = Field(description="Theme of the passage, e.g. 'Space Exploration'")
-    question_types: List[str] = Field(
+    question_types: list[str] = Field(
         description="Question types used, e.g. ['True/False/NG', 'Matching Headings']"
     )
     difficulty: Literal["easy", "medium", "hard"] = Field(description="Difficulty level")
@@ -104,7 +103,7 @@ class ListeningTopic(BaseModel):
 
     section: Literal[1, 2, 3, 4] = Field(description="IELTS Listening section (1-4)")
     scenario: str = Field(description="Scenario description, e.g. 'Booking a hotel room'")
-    question_types: List[str] = Field(
+    question_types: list[str] = Field(
         description="e.g. ['form completion', 'multiple choice']"
     )
     difficulty: Literal["easy", "medium", "hard"] = Field(description="Difficulty level")
@@ -118,10 +117,10 @@ class ListeningTopic(BaseModel):
 class TopicSet(BaseModel):
     """Full set of generated practice topics across all IELTS sections."""
 
-    speaking_topics: List[SpeakingTopic] = Field(default_factory=list)
-    writing_topics: List[WritingTopic] = Field(default_factory=list)
-    reading_topics: List[ReadingTopic] = Field(default_factory=list)
-    listening_topics: List[ListeningTopic] = Field(default_factory=list)
+    speaking_topics: list[SpeakingTopic] = Field(default_factory=list)
+    writing_topics: list[WritingTopic] = Field(default_factory=list)
+    reading_topics: list[ReadingTopic] = Field(default_factory=list)
+    listening_topics: list[ListeningTopic] = Field(default_factory=list)
     target_band: str = Field(description="Overall target band range for this set")
     study_plan_notes: str = Field(
         default="",

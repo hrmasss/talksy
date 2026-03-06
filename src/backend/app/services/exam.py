@@ -4,10 +4,10 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from app.core.exceptions import NotFoundException, BadRequestException
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.core.logging import logger
-from app.db.tables import Exam, ExamAttempt, Question, Answer
-from app.schemas.exam import ExamCreate, ExamUpdate, AnswerSubmit
+from app.db.tables import Answer, Exam, ExamAttempt, Question
+from app.schemas.exam import AnswerSubmit, ExamCreate, ExamUpdate
 from app.services.base import BaseService
 
 

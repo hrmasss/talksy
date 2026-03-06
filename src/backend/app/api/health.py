@@ -1,13 +1,12 @@
 """Health check endpoint."""
 
-from datetime import datetime, timezone
-
-from litestar import Controller, get
-from litestar.status_codes import HTTP_200_OK
+from datetime import UTC, datetime
 
 from app import __version__
 from app.config import settings
 from app.schemas.health import HealthResponse
+from litestar import Controller, get
+from litestar.status_codes import HTTP_200_OK
 
 
 class HealthController(Controller):
@@ -60,7 +59,7 @@ class HealthController(Controller):
         return HealthResponse(
             status=status,
             version=__version__,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             environment=settings.environment,
             services=services,
         )

@@ -119,7 +119,7 @@ class UserService(BaseService[User]):
 
     async def get_user_stats(self, user_id: UUID) -> dict[str, Any]:
         """Get user statistics."""
-        from app.db.tables import ExamAttempt, ConversationSession
+        from app.db.tables import ConversationSession, ExamAttempt
 
         # Get exam attempts
         attempts = await ExamAttempt.count().where(ExamAttempt.user == user_id)

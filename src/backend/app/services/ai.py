@@ -2,12 +2,10 @@
 
 from typing import Any
 
-import httpx
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from app.config import settings
 from app.core.logging import logger
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 
 class AIService:

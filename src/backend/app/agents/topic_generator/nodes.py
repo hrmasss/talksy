@@ -4,26 +4,25 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.config import settings
+
 from ..common.llm import get_llm
-from ..common.tools import web_search, get_current_datetime
 from .models import (
     LevelAssessment,
-    SpeakingTopic,
-    TopicSet,
-    WritingTopic,
-    ReadingTopic,
     ListeningTopic,
+    ReadingTopic,
+    SpeakingTopic,
+    WritingTopic,
 )
 from .prompts import (
     ASSESS_LEVEL_PROMPT,
+    GENERATE_LISTENING_TOPICS_PROMPT,
+    GENERATE_READING_TOPICS_PROMPT,
     GENERATE_SPEAKING_TOPICS_PROMPT,
     GENERATE_WRITING_TOPICS_PROMPT,
-    GENERATE_READING_TOPICS_PROMPT,
-    GENERATE_LISTENING_TOPICS_PROMPT,
 )
 from .state import TopicGeneratorState
 
@@ -52,7 +51,9 @@ async def assess_level_node(state: TopicGeneratorState) -> dict:
         ASSESS_LEVEL_PROMPT.format_messages(
             target_exam=state.get("target_exam", "ielts"),
             target_score=state.get("target_score") or "Not specified",
-            current_level_description=state.get("current_level_description") or "No information provided",
+            current_level_description=state.get(
+                "current_level_description"
+            ) or "No information provided",
             preferences=str(state.get("preferences") or {}),
             **ctx,
         )
@@ -105,18 +106,16 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
     llm = get_llm(model=settings.llm_model, temperature=0.8)
 
     # Build section generators ------------------------------------------------
-    tasks: Dict[str, Any] = {}
+    tasks: dict[str, Any] = {}
 
     if section_focus in (None, "speaking"):
         async def _speaking():
-            s_llm = llm.with_structured_output(TopicSet)
-            # We ask for TopicSet but we only really need speaking_topics
-            # so we'll just call with the speaking prompt and parse partially
+            # We only really need speaking_topics, so use a minimal model
+            # instead of the full TopicSet and ignore the rest.
             from pydantic import BaseModel, Field
-            from typing import List as L
 
             class SpeakingList(BaseModel):
-                topics: L[SpeakingTopic] = Field(default_factory=list)
+                topics: list[SpeakingTopic] = Field(default_factory=list)
 
             s_llm2 = llm.with_structured_output(SpeakingList)
             r = await s_llm2.ainvoke(
@@ -128,10 +127,9 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
     if section_focus in (None, "writing"):
         async def _writing():
             from pydantic import BaseModel, Field
-            from typing import List as L
 
             class WritingList(BaseModel):
-                topics: L[WritingTopic] = Field(default_factory=list)
+                topics: list[WritingTopic] = Field(default_factory=list)
 
             w_llm = llm.with_structured_output(WritingList)
             r = await w_llm.ainvoke(
@@ -145,10 +143,9 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
     if section_focus in (None, "reading"):
         async def _reading():
             from pydantic import BaseModel, Field
-            from typing import List as L
 
             class ReadingList(BaseModel):
-                topics: L[ReadingTopic] = Field(default_factory=list)
+                topics: list[ReadingTopic] = Field(default_factory=list)
 
             r_llm = llm.with_structured_output(ReadingList)
             r = await r_llm.ainvoke(
@@ -160,10 +157,9 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
     if section_focus in (None, "listening"):
         async def _listening():
             from pydantic import BaseModel, Field
-            from typing import List as L
 
             class ListeningList(BaseModel):
-                topics: L[ListeningTopic] = Field(default_factory=list)
+                topics: list[ListeningTopic] = Field(default_factory=list)
 
             l_llm = llm.with_structured_output(ListeningList)
             r = await l_llm.ainvoke(
@@ -176,8 +172,9 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
     keys = list(tasks.keys())
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
-    out: Dict[str, List] = {}
-    for key, result in zip(keys, results):
+    out: dict[str, list] = {}
+    # ensure the keys and results lists are the same length
+    for key, result in zip(keys, results, strict=True):
         if isinstance(result, Exception):
             print(f"⚠️  {key} topic generation failed: {result}")
             out[key] = []

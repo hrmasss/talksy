@@ -4,9 +4,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import EmailStr, Field, field_validator
-
 from app.schemas.base import BaseSchema, TimestampMixin
+from pydantic import EmailStr, Field, field_validator
 
 
 class UserCreate(BaseSchema):

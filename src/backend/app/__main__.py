@@ -54,6 +54,7 @@ def run_cli() -> None:
     def migrate():
         """Run database migrations."""
         import asyncio
+
         from piccolo.apps.migrations.commands.forwards import run_forwards
         
         async def _migrate():
@@ -66,6 +67,7 @@ def run_cli() -> None:
     def makemigrations():
         """Create new migrations."""
         import asyncio
+
         from piccolo.apps.migrations.commands.new import new
         
         async def _makemigrations():
@@ -78,7 +80,7 @@ def run_cli() -> None:
     def shell():
         """Open interactive Python shell."""
         import code
-        from app.db import User, Exam, ExamAttempt, ConversationSession
+
         
         banner = "Talksy Interactive Shell\nAvailable: User, Exam, ExamAttempt, ConversationSession"
         code.interact(banner=banner, local=locals())

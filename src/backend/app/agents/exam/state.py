@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Annotated, Dict, List, Literal, Optional
+from typing import Annotated, Any, Literal
 
-from typing_extensions import TypedDict
-from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
-
+from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
 
 # ---------------------------------------------------------------------------
 # IELTS configuration constants
@@ -81,7 +80,7 @@ class ExamState(TypedDict):
     """State flowing through the IELTS exam LangGraph."""
 
     # --- Conversation history (for the LLM) --------------------------------
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: Annotated[list[BaseMessage], add_messages]
 
     # --- Exam configuration ------------------------------------------------
     user_id: str
@@ -90,29 +89,29 @@ class ExamState(TypedDict):
     target_band: str                       # e.g. "6.0-7.0"
     exam_variant: str                      # "academic" | "general_training"
     total_questions: int
-    time_per_question: Optional[int]       # seconds, None = no timer
+    time_per_question: int | None       # seconds, None = no timer
 
     # --- Question management -----------------------------------------------
-    current_question: Optional[str]
-    current_question_type: Optional[str]
-    current_part: Optional[int]            # Speaking part or Writing task number
+    current_question: str | None
+    current_question_type: str | None
+    current_part: int | None            # Speaking part or Writing task number
     question_number: int
-    questions_asked: List[Dict[str, Any]]
+    questions_asked: list[dict[str, Any]]
 
     # --- Answer management -------------------------------------------------
-    current_answer: Optional[str]
-    candidate_answers: List[Dict[str, Any]]
+    current_answer: str | None
+    candidate_answers: list[dict[str, Any]]
 
     # --- Performance tracking ----------------------------------------------
-    performance_scores: List[float]
+    performance_scores: list[float]
     current_phase: str                     # "warm_up" | "main" | "wrap_up"
 
     # --- Evaluation --------------------------------------------------------
-    current_evaluation: Optional[Dict[str, Any]]
-    final_band_score: Optional[float]
-    final_report: Optional[str]
+    current_evaluation: dict[str, Any] | None
+    final_band_score: float | None
+    final_report: str | None
 
     # --- Control -----------------------------------------------------------
     should_continue: bool
     status: str                            # "in_progress" | "completed" | "failed"
-    error_message: Optional[str]
+    error_message: str | None

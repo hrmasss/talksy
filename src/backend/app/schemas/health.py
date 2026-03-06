@@ -3,9 +3,8 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
-
 from app.schemas.base import BaseSchema
+from pydantic import Field
 
 
 class HealthResponse(BaseSchema):

@@ -4,28 +4,24 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
-from typing import Any, Dict, Literal
-from zoneinfo import ZoneInfo
-
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Literal
 
 from app.config import settings
+from app.memory.service import memory_service
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from ..common.llm import get_llm
 from .models import AnswerEvaluation, FinalExamReport
 from .prompts import (
-    get_speaking_examiner_prompt,
-    get_writing_examiner_prompt,
     get_answer_evaluation_prompt,
     get_final_evaluation_prompt,
+    get_speaking_examiner_prompt,
+    get_writing_examiner_prompt,
 )
 from .state import (
     ExamState,
-    SPEAKING_PARTS,
-    WRITING_TASKS,
     get_difficulty_info,
 )
-
 
 # ============================================================================
 # Helpers
@@ -53,15 +49,46 @@ def _current_part(state: ExamState) -> int:
 # ============================================================================
 
 async def initialise_exam_node(state: ExamState) -> dict:
-    """Set up the exam session – build the system prompt and initialise state."""
+    """Set up the exam session - build the system prompt and initialise state."""
     section = state.get("exam_section", "speaking")
     difficulty = state.get("difficulty_level", "intermediate")
     diff_info = get_difficulty_info(difficulty)
     target_band = state.get("target_band") or diff_info["target_band"]
     total_q = state.get("total_questions") or diff_info["total_questions"]
     variant = state.get("exam_variant", "academic")
+    user_id = state.get("user_id", "")
 
-    print(f"🎓 Initialising IELTS {section.title()} exam – {difficulty} (target {target_band})")
+    print(f"🎓 Initialising IELTS {section.title()} exam - {difficulty} (target {target_band})")
+
+    # ── Recall long-term memory for this user & section ──────────
+    memory_context = ""
+    if user_id:
+        try:
+            memory_context = await memory_service.recall_for_exam(
+                user_id=user_id,
+                section=section,
+            )
+        except Exception as exc:
+            print(f"⚠️ Memory recall skipped: {exc}")
+            memory_context = ""
+
+        # Log exam start as user activity
+        try:
+            await memory_service.store_user_activity(
+                user_id=user_id,
+                action="exam_started",
+                detail=(
+                    f"Started {section} exam, "
+                    f"difficulty={difficulty}, target_band={target_band}"
+                ),
+                metadata={
+                    "section": section,
+                    "difficulty": difficulty,
+                    "target_band": target_band,
+                },
+            )
+        except Exception as exc:
+            print(f"⚠️ Activity log skipped: {exc}")
 
     part = 1
     if section == "speaking":
@@ -80,10 +107,20 @@ async def initialise_exam_node(state: ExamState) -> dict:
             exam_variant=variant,
         )
     else:
-        # reading / listening – simplified for now
+        # reading / listening - simplified for now
         sys_prompt = (
             f"You are an IELTS {section.title()} examiner. "
             f"Generate questions appropriate for band {target_band}."
+        )
+
+    # Append user memory context so the LLM can personalise
+    if memory_context:
+        sys_prompt += (
+            "\n\n--- USER HISTORY (from long-term memory) ---\n"
+            f"{memory_context}\n"
+            "Use the above context to tailor questions to the user's level, "
+            "focus on their weak areas, and avoid repeating topics they've "
+            "already mastered.\n"
         )
 
     return {
@@ -346,6 +383,27 @@ async def final_evaluation_node(state: ExamState) -> dict:
             answers[idx]["evaluation"] = ev
 
     print(f"✅ Final band score: {overall}")
+
+    # ── Persist to long-term memory ──────────────────────────────
+    user_id = state.get("user_id", "")
+    if user_id:
+        try:
+            await memory_service.store_exam_result(
+                user_id=user_id,
+                section=section,
+                band_score=overall,
+                strengths=data.get("strengths"),
+                weaknesses=data.get("weaknesses"),
+                recommendations=data.get("recommendations"),
+                report_summary=report_md[:500] if report_md else "",
+                extra_metadata={
+                    "difficulty": difficulty,
+                    "target_band": target_band,
+                    "total_questions": len(answers),
+                },
+            )
+        except Exception as exc:
+            print(f"⚠️ Memory store after exam failed: {exc}")
 
     return {
         "candidate_answers": answers,

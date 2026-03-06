@@ -1,11 +1,9 @@
 """Piccolo ORM configuration."""
 
-from piccolo.conf.apps import AppRegistry
-from piccolo.engine.sqlite import SQLiteEngine
-from piccolo.engine.postgres import PostgresEngine
-
 from app.config import settings
-
+from piccolo.conf.apps import AppRegistry
+from piccolo.engine.postgres import PostgresEngine
+from piccolo.engine.sqlite import SQLiteEngine
 
 # Database engine configuration
 if settings.db_engine == "sqlite":

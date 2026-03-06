@@ -2,17 +2,16 @@
 
 from uuid import UUID
 
-from litestar import Controller, get, post, put, delete
-from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_204_NO_CONTENT
-
 from app.schemas.user import (
-    UserCreate,
-    UserUpdate,
-    UserResponse,
-    UserLogin,
     TokenResponse,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    UserUpdate,
 )
 from app.services.user import user_service
+from litestar import Controller, get, post, put
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 
 class UserController(Controller):
@@ -29,8 +28,6 @@ class UserController(Controller):
     )
     async def register(self, data: UserCreate) -> dict:
         """Register a new user."""
-        from uuid import UUID as PyUUID
-        from datetime import datetime
         
         user = await user_service.create_user(data)
         
