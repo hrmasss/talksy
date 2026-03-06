@@ -5,6 +5,7 @@ from litestar import Router
 from app.api.v1.users import UserController
 from app.api.v1.exams import ExamController
 from app.api.v1.conversations import ConversationController
+from app.api.v1.practice import PracticeController
 
 
 api_v1_router = Router(
@@ -13,6 +14,7 @@ api_v1_router = Router(
         UserController,
         ExamController,
         ConversationController,
+        PracticeController,
     ],
     tags=["API v1"],
 )

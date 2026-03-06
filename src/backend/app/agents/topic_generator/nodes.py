@@ -1,0 +1,201 @@
+"""Graph nodes for the IELTS topic generator."""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime
+from typing import Any, Dict, List
+from zoneinfo import ZoneInfo
+
+from app.config import settings
+from ..common.llm import get_llm
+from ..common.tools import web_search, get_current_datetime
+from .models import (
+    LevelAssessment,
+    SpeakingTopic,
+    TopicSet,
+    WritingTopic,
+    ReadingTopic,
+    ListeningTopic,
+)
+from .prompts import (
+    ASSESS_LEVEL_PROMPT,
+    GENERATE_SPEAKING_TOPICS_PROMPT,
+    GENERATE_WRITING_TOPICS_PROMPT,
+    GENERATE_READING_TOPICS_PROMPT,
+    GENERATE_LISTENING_TOPICS_PROMPT,
+)
+from .state import TopicGeneratorState
+
+
+def _time_ctx() -> dict:
+    now = datetime.now(ZoneInfo("UTC"))
+    return {
+        "current_datetime": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "current_year": now.year,
+    }
+
+
+# ============================================================================
+# 1. Assess Level
+# ============================================================================
+
+async def assess_level_node(state: TopicGeneratorState) -> dict:
+    """Estimate the user's IELTS band from their self-description."""
+    print("📊 Assessing user IELTS level …")
+
+    llm = get_llm(model=settings.llm_model, temperature=0.5)
+    structured = llm.with_structured_output(LevelAssessment)
+
+    ctx = _time_ctx()
+    response: LevelAssessment = await structured.ainvoke(
+        ASSESS_LEVEL_PROMPT.format_messages(
+            target_exam=state.get("target_exam", "ielts"),
+            target_score=state.get("target_score") or "Not specified",
+            current_level_description=state.get("current_level_description") or "No information provided",
+            preferences=str(state.get("preferences") or {}),
+            **ctx,
+        )
+    )
+
+    data = response.model_dump()
+    target = state.get("target_score")
+    band_range = data["band_range"]
+    if target:
+        band_range = f"{data['estimated_band']:.1f} → {target:.1f}"
+
+    print(f"✅ Estimated band: {data['estimated_band']} ({band_range})")
+
+    return {
+        "estimated_band": data["estimated_band"],
+        "band_range": band_range,
+        "section_estimates": data.get("section_estimates", {}),
+        "strengths": data.get("strengths", []),
+        "weaknesses": data.get("weaknesses", []),
+        "assessment_summary": data.get("summary", ""),
+        "status": "processing",
+        "progress": 20.0,
+    }
+
+
+# ============================================================================
+# 2. Generate Topics (concurrent per section)
+# ============================================================================
+
+async def generate_topics_node(state: TopicGeneratorState) -> dict:
+    """Generate practice topics for all (or a focused) IELTS section."""
+    print("📝 Generating IELTS practice topics …")
+
+    band_range = state.get("band_range", "5.5-6.0")
+    target_band = f"{state.get('target_score', 6.5):.1f}"
+    weaknesses = str(state.get("weaknesses", []))
+    section_focus = state.get("section_focus")  # None = all sections
+    exam_variant = (state.get("preferences") or {}).get("variant", "academic")
+    ctx = _time_ctx()
+    num_topics = 4  # per section
+
+    common = {
+        "band_range": band_range,
+        "target_band": target_band,
+        "weaknesses": weaknesses,
+        "num_topics": num_topics,
+        **ctx,
+    }
+
+    llm = get_llm(model=settings.llm_model, temperature=0.8)
+
+    # Build section generators ------------------------------------------------
+    tasks: Dict[str, Any] = {}
+
+    if section_focus in (None, "speaking"):
+        async def _speaking():
+            s_llm = llm.with_structured_output(TopicSet)
+            # We ask for TopicSet but we only really need speaking_topics
+            # so we'll just call with the speaking prompt and parse partially
+            from pydantic import BaseModel, Field
+            from typing import List as L
+
+            class SpeakingList(BaseModel):
+                topics: L[SpeakingTopic] = Field(default_factory=list)
+
+            s_llm2 = llm.with_structured_output(SpeakingList)
+            r = await s_llm2.ainvoke(
+                GENERATE_SPEAKING_TOPICS_PROMPT.format_messages(**common)
+            )
+            return [t.model_dump() for t in r.topics]
+        tasks["speaking"] = _speaking()
+
+    if section_focus in (None, "writing"):
+        async def _writing():
+            from pydantic import BaseModel, Field
+            from typing import List as L
+
+            class WritingList(BaseModel):
+                topics: L[WritingTopic] = Field(default_factory=list)
+
+            w_llm = llm.with_structured_output(WritingList)
+            r = await w_llm.ainvoke(
+                GENERATE_WRITING_TOPICS_PROMPT.format_messages(
+                    exam_variant=exam_variant, **common
+                )
+            )
+            return [t.model_dump() for t in r.topics]
+        tasks["writing"] = _writing()
+
+    if section_focus in (None, "reading"):
+        async def _reading():
+            from pydantic import BaseModel, Field
+            from typing import List as L
+
+            class ReadingList(BaseModel):
+                topics: L[ReadingTopic] = Field(default_factory=list)
+
+            r_llm = llm.with_structured_output(ReadingList)
+            r = await r_llm.ainvoke(
+                GENERATE_READING_TOPICS_PROMPT.format_messages(**common)
+            )
+            return [t.model_dump() for t in r.topics]
+        tasks["reading"] = _reading()
+
+    if section_focus in (None, "listening"):
+        async def _listening():
+            from pydantic import BaseModel, Field
+            from typing import List as L
+
+            class ListeningList(BaseModel):
+                topics: L[ListeningTopic] = Field(default_factory=list)
+
+            l_llm = llm.with_structured_output(ListeningList)
+            r = await l_llm.ainvoke(
+                GENERATE_LISTENING_TOPICS_PROMPT.format_messages(**common)
+            )
+            return [t.model_dump() for t in r.topics]
+        tasks["listening"] = _listening()
+
+    # Run all in parallel
+    keys = list(tasks.keys())
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    out: Dict[str, List] = {}
+    for key, result in zip(keys, results):
+        if isinstance(result, Exception):
+            print(f"⚠️  {key} topic generation failed: {result}")
+            out[key] = []
+        else:
+            out[key] = result
+            print(f"✅ {key}: {len(result)} topics generated")
+
+    study_plan = (
+        f"Focus on your weaknesses: {', '.join(state.get('weaknesses', []))}. "
+        f"Practice each section regularly and time yourself under exam conditions."
+    )
+
+    return {
+        "speaking_topics": out.get("speaking", state.get("speaking_topics", [])),
+        "writing_topics": out.get("writing", state.get("writing_topics", [])),
+        "reading_topics": out.get("reading", state.get("reading_topics", [])),
+        "listening_topics": out.get("listening", state.get("listening_topics", [])),
+        "study_plan_notes": study_plan,
+        "status": "completed",
+        "progress": 100.0,
+    }

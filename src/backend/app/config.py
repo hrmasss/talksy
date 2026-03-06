@@ -41,9 +41,19 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # OpenAI / LLM
+    # AI / LLM
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
+    openrouter_api_key: str = ""
+    openrouter_api_base: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = ""
+    llm_model: str = "openai/gpt-4.1-mini"
+    gemini_api_key: str = ""
+    serper_api_key: str = ""
+    embedding_model: str = "text-embedding-3-small"
+
+    # AI Database (for LangGraph checkpointer)
+    ai_db_uri: str = ""
 
     # Paths
     base_dir: Path = Path(__file__).parent.parent.parent.parent.resolve()

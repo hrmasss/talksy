@@ -135,10 +135,44 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
     return app
 
 
+async def _ensure_postgres_db_exists() -> None:
+    """Create the PostgreSQL database if it does not exist."""
+    import asyncpg
+
+    db_name = settings.db_name
+    try:
+        # Connect to the default 'postgres' maintenance database
+        conn = await asyncpg.connect(
+            host=settings.db_host,
+            port=settings.db_port,
+            user=settings.db_user,
+            password=settings.db_password,
+            database="postgres",
+        )
+        try:
+            exists = await conn.fetchval(
+                "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+            )
+            if not exists:
+                # Database names cannot be parameterised in CREATE DATABASE
+                await conn.execute(f'CREATE DATABASE "{db_name}"')
+                logger.info(f"Database '{db_name}' created successfully")
+            else:
+                logger.debug(f"Database '{db_name}' already exists")
+        finally:
+            await conn.close()
+    except Exception as e:
+        logger.warning(f"Could not ensure database '{db_name}' exists: {e}")
+
+
 async def on_startup() -> None:
     """Application startup handler."""
     logger.info(f"Starting Talksy v{__version__} in {settings.environment} mode")
-    
+
+    # Create the database if it doesn't exist (PostgreSQL only)
+    if settings.db_engine == "postgres":
+        await _ensure_postgres_db_exists()
+
     # Initialize database tables
     try:
         from piccolo.engine import engine_finder
@@ -153,6 +187,14 @@ async def on_startup() -> None:
 async def on_shutdown() -> None:
     """Application shutdown handler."""
     logger.info("Shutting down Talksy...")
+
+    # Close LangGraph checkpointer connection pool
+    try:
+        from app.agents.common.checkpointer import close_pool
+        await close_pool()
+        logger.info("Agent checkpointer pool closed")
+    except Exception as e:
+        logger.warning(f"Error closing agent checkpointer pool: {e}")
     
     # Close database connections
     try:

@@ -18,6 +18,12 @@ from piccolo.columns import (
 from piccolo.columns.defaults.timestamp import TimestampNow
 
 
+class UserRole(str, Enum):
+    """User roles."""
+    ADMIN = "admin"
+    USER = "user"
+
+
 class ExamType(str, Enum):
     """Types of exams supported."""
     IELTS = "ielts"
@@ -52,8 +58,8 @@ class User(Table):
     password_hash = Varchar(length=255)
     full_name = Varchar(length=255)
     avatar_url = Varchar(length=500, null=True)
+    role = Varchar(length=20, default=UserRole.USER, choices=UserRole)
     is_active = Boolean(default=True)
-    is_admin = Boolean(default=False)
     is_verified = Boolean(default=False)
     target_exam = Varchar(length=50, null=True)  # ielts, pte, toefl
     target_score = Float(null=True)
