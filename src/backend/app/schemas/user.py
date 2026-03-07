@@ -1,10 +1,10 @@
 """User-related schemas."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from app.schemas.base import BaseSchema, TimestampMixin
+from app.schemas.base import BaseSchema, TimestampMixin, JsonDict
 from pydantic import EmailStr, Field, field_validator
 
 
@@ -40,7 +40,7 @@ class UserUpdate(BaseSchema):
     target_exam: str | None = Field(default=None, pattern="^(ielts|pte|toefl)$")
     target_score: float | None = Field(default=None, ge=0, le=9)
     timezone: str | None = None
-    preferences: dict[str, Any] | None = None
+    preferences: JsonDict | None = None
 
 
 class UserResponse(BaseSchema, TimestampMixin):
@@ -51,13 +51,20 @@ class UserResponse(BaseSchema, TimestampMixin):
     full_name: str
     avatar_url: str | None = None
     is_active: bool
-    is_admin: bool
     is_verified: bool
     target_exam: str | None = None
     target_score: float | None = None
     timezone: str
-    preferences: dict[str, Any] = {}
+    preferences: JsonDict = {}
     last_login_at: datetime | None = None
+    # IELTS fields
+    target_band_score: float | None = None
+    exam_date: date | None = None
+    preferred_daily_practice_time: int | None = None
+    current_estimated_band: float | None = None
+    skill_profile: JsonDict = {}
+    section_scores: JsonDict = {}
+    onboarding_completed: bool = False
 
 
 class UserLogin(BaseSchema):
@@ -70,6 +77,16 @@ class UserLogin(BaseSchema):
 class TokenResponse(BaseSchema):
     """Schema for authentication token response."""
 
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int = 3600
+
+
+class AuthResponse(BaseSchema):
+    """Schema for authentication response with user data and tokens."""
+
+    user: UserResponse
     access_token: str
     refresh_token: str
     token_type: str = "bearer"

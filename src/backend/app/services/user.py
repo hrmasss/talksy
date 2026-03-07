@@ -59,7 +59,6 @@ class UserService(BaseService[User]):
             "target_score": data.target_score,
             "timezone": data.timezone,
             "is_active": True,
-            "is_admin": False,
             "is_verified": False,
         }
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from app.schemas.base import BaseSchema, TimestampMixin
+from app.schemas.base import BaseSchema, TimestampMixin, JsonDict, JsonList
 from pydantic import Field
 
 
@@ -21,7 +21,7 @@ class ExamCreate(BaseSchema):
     difficulty_level: int = Field(default=1, ge=1, le=5)
     is_active: bool = True
     is_free: bool = False
-    metadata: dict[str, Any] = {}
+    metadata: JsonDict = {}
 
 
 class ExamUpdate(BaseSchema):
@@ -33,7 +33,7 @@ class ExamUpdate(BaseSchema):
     difficulty_level: int | None = Field(default=None, ge=1, le=5)
     is_active: bool | None = None
     is_free: bool | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: JsonDict | None = None
 
 
 class ExamResponse(BaseSchema, TimestampMixin):
@@ -50,7 +50,7 @@ class ExamResponse(BaseSchema, TimestampMixin):
     difficulty_level: int
     is_active: bool
     is_free: bool
-    metadata: dict[str, Any] = {}
+    metadata: JsonDict = {}
 
 
 class ExamListResponse(BaseSchema):
@@ -71,13 +71,13 @@ class QuestionCreate(BaseSchema):
     question_text: str
     question_audio_url: str | None = None
     question_image_url: str | None = None
-    options: list[dict[str, Any]] = []
+    options: JsonList = []
     correct_answer: Any
     explanation: str | None = None
     points: float = 1.0
     time_limit_seconds: int | None = None
-    hints: list[str] = []
-    tags: list[str] = []
+    hints: JsonList = []
+    tags: JsonList = []
 
 
 class QuestionResponse(BaseSchema):
@@ -89,10 +89,10 @@ class QuestionResponse(BaseSchema):
     question_text: str
     question_audio_url: str | None = None
     question_image_url: str | None = None
-    options: list[dict[str, Any]] = []
+    options: JsonList = []
     points: float
     time_limit_seconds: int | None = None
-    hints: list[str] = []
+    hints: JsonList = []
 
 
 class ExamAttemptCreate(BaseSchema):
@@ -114,8 +114,8 @@ class ExamAttemptResponse(BaseSchema):
     max_score: float | None = None
     band_score: float | None = None
     status: str
-    feedback: dict[str, Any] = {}
-    ai_analysis: dict[str, Any] = {}
+    feedback: JsonDict = {}
+    ai_analysis: JsonDict = {}
 
 
 class AnswerSubmit(BaseSchema):
@@ -135,7 +135,7 @@ class AnswerResponse(BaseSchema):
     user_answer: Any
     is_correct: bool | None = None
     points_earned: float
-    ai_feedback: dict[str, Any] = {}
+    ai_feedback: JsonDict = {}
 
 
 class ExamResultResponse(BaseSchema):
@@ -143,5 +143,5 @@ class ExamResultResponse(BaseSchema):
 
     attempt: ExamAttemptResponse
     answers: list[AnswerResponse]
-    summary: dict[str, Any] = {}
-    recommendations: list[str] = []
+    summary: JsonDict = {}
+    recommendations: JsonList = []

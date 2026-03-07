@@ -1,10 +1,23 @@
-"""Base schema classes and mixins."""
-
+import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator, BeforeValidator
+
+
+def parse_json_field(v: Any) -> Any:
+    """Parse a JSON string if necessary."""
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return v or {}
+
+
+JsonDict = Annotated[dict[str, Any], BeforeValidator(parse_json_field)]
+JsonList = Annotated[list[Any], BeforeValidator(parse_json_field)]
 
 
 class BaseSchema(BaseModel):
@@ -19,6 +32,16 @@ class BaseSchema(BaseModel):
             UUID: lambda v: str(v),
         },
     )
+
+    @staticmethod
+    def parse_json(v: Any) -> Any:
+        """Parse a JSON string if necessary."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return v or {}
 
 
 class TimestampMixin(BaseModel):

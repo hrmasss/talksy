@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 # ============================================================================
@@ -252,3 +253,163 @@ Respond with a JSON object matching:
     "recommendations": ["…"],
     "final_report_markdown": "# IELTS Practice Report\\n\\n…"
 }}"""
+
+
+# ============================================================================
+# Reading Examiner
+# ============================================================================
+
+def get_reading_examiner_prompt(
+    *,
+    difficulty_level: str,
+    target_band: str,
+    total_questions: int,
+    question_number: int,
+    exam_variant: str = "academic",
+) -> str:
+    """System prompt for generating IELTS Reading questions."""
+    now = datetime.now(ZoneInfo("UTC"))
+
+    variant_desc = (
+        "Academic texts from journals, textbooks, and magazines"
+        if exam_variant == "academic"
+        else "General Training texts from notices, ads, company handbooks, and newspapers"
+    )
+
+    return f"""You are a certified IELTS Reading examiner creating practice questions.
+
+Date: {now.strftime("%Y-%m-%d")}
+
+EXAM CONFIGURATION:
+- Variant: {exam_variant.title()}
+- Difficulty: {difficulty_level}
+- Target band: {target_band}
+- Question: #{question_number + 1} of {total_questions}
+
+TEXT TYPE: {variant_desc}
+
+IELTS READING QUESTION TYPES:
+• Multiple choice (A-D)
+• True / False / Not Given
+• Matching headings
+• Sentence completion
+• Short answer questions
+• Summary completion
+
+RULES:
+1. Provide a short passage (150-250 words) relevant to the question
+2. Ask ONE question about the passage
+3. Use a variety of question types across questions
+4. Adjust complexity to match the target band
+5. For MCQ, provide 4 options (A-D)
+6. Include the correct answer in your response
+7. Make passages on diverse academic topics
+
+Output a JSON object:
+{{
+    "passage": "The full reading passage text...",
+    "question": "The question text...",
+    "question_type": "multiple_choice|true_false_ng|fill_blank|short_answer",
+    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+    "correct_answer": "B"
+}}"""
+
+
+# ============================================================================
+# Listening Examiner
+# ============================================================================
+
+def get_listening_examiner_prompt(
+    *,
+    difficulty_level: str,
+    target_band: str,
+    total_questions: int,
+    question_number: int,
+) -> str:
+    """System prompt for generating IELTS Listening questions."""
+    now = datetime.now(ZoneInfo("UTC"))
+
+    part = 1 if question_number < 3 else (2 if question_number < 6 else 3)
+
+    part_descs = {
+        1: "A conversation in a social context (e.g., booking, inquiry)",
+        2: "A monologue in a social context (e.g., speech, tour guide)",
+        3: "A conversation in an academic context (e.g., tutorial discussion)",
+    }
+
+    return f"""You are a certified IELTS Listening examiner creating practice questions.
+
+Date: {now.strftime("%Y-%m-%d")}
+
+EXAM CONFIGURATION:
+- Difficulty: {difficulty_level}
+- Target band: {target_band}
+- Question: #{question_number + 1} of {total_questions}
+- Section/Part: {part} - {part_descs.get(part, '')}
+
+RULES:
+1. Describe a realistic audio scenario in detail (what the listener would hear)
+2. The scenario should be 4-8 sentences describing the conversation/monologue
+3. Ask ONE question about the scenario
+4. Use multiple choice (A-D) or fill-in-the-blank format
+5. Include the correct answer
+6. Make scenarios on diverse real-world topics
+
+Output a JSON object:
+{{
+    "scenario": "You will hear a conversation between... [detailed description]",
+    "question": "What is...?",
+    "question_type": "multiple_choice|fill_blank",
+    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+    "correct_answer": "B"
+}}"""
+
+
+# ============================================================================
+# User History Context
+# ============================================================================
+
+def get_user_history_context(
+    *,
+    target_band: float,
+    current_band: float,
+    section_scores: dict[str, float],
+    recent_tests: list[dict[str, Any]],
+    weaknesses: list[str],
+    strengths: list[str],
+) -> str:
+    """Build context string from user's test history for adaptive generation."""
+    history_text = ""
+    if recent_tests:
+        for i, t in enumerate(recent_tests[:10], 1):
+            history_text += f"  Test {i}: "
+            if t.get("section"):
+                history_text += f"{t['section'].title()} - "
+            history_text += f"Band {t.get('band_score', '?')}\n"
+    else:
+        history_text = "  No previous tests.\n"
+
+    return f"""
+--- USER PERFORMANCE CONTEXT ---
+Target Band: {target_band}
+Current Estimated Band: {current_band}
+
+Section Scores:
+  Listening: {section_scores.get('listening', 'N/A')}
+  Reading: {section_scores.get('reading', 'N/A')}
+  Writing: {section_scores.get('writing', 'N/A')}
+  Speaking: {section_scores.get('speaking', 'N/A')}
+
+Last Test Results:
+{history_text}
+
+Weakness Patterns: {', '.join(weaknesses) if weaknesses else 'Not yet identified'}
+Strengths: {', '.join(strengths) if strengths else 'Not yet identified'}
+
+ADAPTIVE INSTRUCTIONS:
+1. Focus more questions on weak areas
+2. Gradually increase difficulty toward the target band {target_band}
+3. Avoid repeating similar question patterns from recent tests
+4. If user improves consistently, push difficulty higher
+5. If user struggles, provide slightly easier questions to build confidence
+---"""

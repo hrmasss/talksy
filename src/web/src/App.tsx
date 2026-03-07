@@ -1,14 +1,22 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
+import { AuthProvider, useAuth } from "@/lib/auth";
 
 // Lazy load pages for code splitting
 const MarketingPage = lazy(() => import("@/pages/marketing"));
+const LoginPage = lazy(() => import("@/pages/login"));
+const SignupPage = lazy(() => import("@/pages/signup"));
 
 // User App
 const AppLayout = lazy(() => import("@/pages/app/layout"));
 const AppHome = lazy(() => import("@/pages/app/home"));
 const AppExams = lazy(() => import("@/pages/app/exams"));
 const AppHistory = lazy(() => import("@/pages/app/history"));
+const AppDashboard = lazy(() => import("@/pages/app/dashboard"));
+const AppOnboarding = lazy(() => import("@/pages/app/onboarding"));
+const AppMockTest = lazy(() => import("@/pages/app/mock-test"));
+const AppDailyStudy = lazy(() => import("@/pages/app/daily-study"));
+const AppProgress = lazy(() => import("@/pages/app/progress"));
 
 // Admin
 const AdminLayout = lazy(() => import("@/pages/admin/layout"));
@@ -26,29 +34,56 @@ function LoadingSpinner() {
   );
 }
 
+/** Redirects to /login if not authenticated */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <LoadingSpinner />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** Redirects to /app if already authenticated */
+function GuestOnly({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <LoadingSpinner />;
+  if (isAuthenticated) return <Navigate to="/app" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <Routes>
-        {/* Marketing / Landing Page */}
-        <Route path="/" element={<MarketingPage />} />
+    <AuthProvider>
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
+          {/* Marketing / Landing Page */}
+          <Route path="/" element={<MarketingPage />} />
 
-        {/* User App Routes */}
-        <Route path="/app" element={<AppLayout />}>
-          <Route index element={<AppHome />} />
-          <Route path="exams" element={<AppExams />} />
-          <Route path="history" element={<AppHistory />} />
-        </Route>
+          {/* Auth Pages — redirect to /app if already logged in */}
+          <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
+          <Route path="/signup" element={<GuestOnly><SignupPage /></GuestOnly>} />
 
-        {/* Admin Routes */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="users" element={<AdminUsers />} />
-          <Route path="exams" element={<AdminExams />} />
-          <Route path="questions" element={<AdminQuestions />} />
-          <Route path="analytics" element={<AdminAnalytics />} />
-        </Route>
-      </Routes>
-    </Suspense>
+          {/* User App Routes — require authentication */}
+          <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
+            <Route index element={<AppHome />} />
+            <Route path="exams" element={<AppExams />} />
+            <Route path="history" element={<AppHistory />} />
+            <Route path="dashboard" element={<AppDashboard />} />
+            <Route path="onboarding" element={<AppOnboarding />} />
+            <Route path="mock-test" element={<AppMockTest />} />
+            <Route path="daily-study" element={<AppDailyStudy />} />
+            <Route path="progress" element={<AppProgress />} />
+          </Route>
+
+          {/* Admin Routes */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="exams" element={<AdminExams />} />
+            <Route path="questions" element={<AdminQuestions />} />
+            <Route path="analytics" element={<AdminAnalytics />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </AuthProvider>
   );
 }

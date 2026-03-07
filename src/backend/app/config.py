@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     openrouter_model: str = ""
     llm_model: str = "openai/gpt-4.1-mini"
     gemini_api_key: str = ""
+    tavily_api_key: str = ""
     serper_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_provider: Literal["openai", "google", "huggingface"] = "openai"

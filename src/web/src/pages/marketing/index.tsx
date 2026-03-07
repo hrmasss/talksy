@@ -58,12 +58,12 @@ export default function MarketingPage() {
             Talksy
           </Link>
           <nav className="flex items-center gap-4">
-            <Link to="/app">
+            <Link to="/login">
               <Button variant="ghost" size="sm">
                 Sign In
               </Button>
             </Link>
-            <Link to="/app">
+            <Link to="/signup">
               <Button size="sm">Get Started</Button>
             </Link>
           </nav>
@@ -82,7 +82,7 @@ export default function MarketingPage() {
             writing—all in one place.
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
-            <Link to="/app">
+            <Link to="/signup">
               <Button size="lg" className="h-12 px-8">
                 Start Practicing Free
               </Button>
@@ -121,7 +121,7 @@ export default function MarketingPage() {
             Join thousands of learners preparing for their English exams.
           </p>
           <div className="mt-8">
-            <Link to="/app">
+            <Link to="/signup">
               <Button size="lg" className="h-12 px-8">
                 Get Started Now
               </Button>

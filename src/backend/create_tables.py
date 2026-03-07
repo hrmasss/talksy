@@ -6,9 +6,14 @@ from app.db.tables import (
     Answer,
     ConversationMessage,
     ConversationSession,
+    DailyStudyPlan,
     Exam,
     ExamAttempt,
+    PlacementResponse,
+    PlacementTest,
+    ProgressSnapshot,
     Question,
+    StudyActivity,
     User,
 )
 
@@ -23,6 +28,11 @@ async def create_tables():
         Answer,
         ConversationSession,
         ConversationMessage,
+        PlacementTest,
+        PlacementResponse,
+        DailyStudyPlan,
+        StudyActivity,
+        ProgressSnapshot,
     ]
     
     for table in tables:

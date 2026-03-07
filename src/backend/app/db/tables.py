@@ -7,6 +7,7 @@ from piccolo.columns import (
     JSON,
     UUID,
     Boolean,
+    Date,
     Float,
     ForeignKey,
     Integer,
@@ -68,6 +69,15 @@ class User(Table):
     created_at = Timestamp(default=TimestampNow())
     updated_at = Timestamp(default=TimestampNow(), auto_update=datetime.now)
     last_login_at = Timestamp(null=True)
+
+    # IELTS-specific profile fields
+    target_band_score = Float(null=True)
+    exam_date = Date(null=True)
+    preferred_daily_practice_time = Integer(null=True)  # minutes
+    current_estimated_band = Float(null=True)
+    skill_profile = JSON(default={})  # {strengths: [], weaknesses: [], focus_areas: []}
+    onboarding_completed = Boolean(default=False)
+    section_scores = JSON(default={})  # {listening: 0, reading: 0, writing: 0, speaking: 0}
 
 
 class Exam(Table):
@@ -174,3 +184,105 @@ class ConversationMessage(Table):
     audio_url = Varchar(length=500, null=True)
     timestamp = Timestamp(default=TimestampNow())
     analysis = JSON(default={})  # Grammar, vocabulary analysis
+
+
+# ──────────────────────────────────────────────────────────────────
+# IELTS Placement / Onboarding
+# ──────────────────────────────────────────────────────────────────
+
+class PlacementTest(Table):
+    """Initial diagnostic placement test record."""
+
+    id = UUID(primary_key=True)
+    user = ForeignKey(references=User)
+    status = Varchar(length=50, default="in_progress")  # in_progress, completed
+    started_at = Timestamp(default=TimestampNow())
+    completed_at = Timestamp(null=True)
+
+    # Section scores (0-9 IELTS band)
+    listening_band = Float(null=True)
+    reading_band = Float(null=True)
+    writing_band = Float(null=True)
+    speaking_band = Float(null=True)
+    overall_band = Float(null=True)
+
+    # AI analysis results
+    skill_profile = JSON(default={})  # {strengths: [], weaknesses: [], focus_areas: []}
+    ai_analysis = JSON(default={})
+    responses = JSON(default={})  # Raw Q&A for each section
+    thread_id = Varchar(length=255, null=True)  # LangGraph thread
+
+
+class PlacementResponse(Table):
+    """Individual response within a placement test."""
+
+    id = UUID(primary_key=True)
+    placement_test = ForeignKey(references=PlacementTest)
+    section = Varchar(length=50, index=True)  # listening, reading, writing, speaking
+    question_text = Text()
+    question_type = Varchar(length=50)  # multiple_choice, fill_blank, essay, speaking
+    user_answer = Text()
+    ai_evaluation = JSON(default={})
+    band_score = Float(null=True)
+    created_at = Timestamp(default=TimestampNow())
+
+
+# ──────────────────────────────────────────────────────────────────
+# Daily Study Content
+# ──────────────────────────────────────────────────────────────────
+
+class DailyStudyPlan(Table):
+    """AI-generated daily study plan for a user."""
+
+    id = UUID(primary_key=True)
+    user = ForeignKey(references=User)
+    study_date = Date()
+    activities = JSON(default=[])  # [{type, section, title, content, difficulty, ...}]
+    completed_count = Integer(default=0)
+    total_count = Integer(default=0)
+    is_completed = Boolean(default=False)
+    ai_rationale = Text(null=True)  # Why these activities were chosen
+    created_at = Timestamp(default=TimestampNow())
+
+
+class StudyActivity(Table):
+    """Individual study activity within a daily plan."""
+
+    id = UUID(primary_key=True)
+    daily_plan = ForeignKey(references=DailyStudyPlan)
+    user = ForeignKey(references=User)
+    section = Varchar(length=50, index=True)  # listening, reading, writing, speaking, vocabulary
+    activity_type = Varchar(length=50)  # vocabulary, mini_listening, reading_passage, speaking_prompt, writing_task
+    title = Varchar(length=255)
+    content = JSON(default={})  # The actual exercise content
+    difficulty_level = Integer(default=1)  # 1-5
+    is_completed = Boolean(default=False)
+    user_response = JSON(default={})
+    ai_feedback = JSON(default={})
+    band_score = Float(null=True)
+    time_spent_seconds = Integer(default=0)
+    created_at = Timestamp(default=TimestampNow())
+    completed_at = Timestamp(null=True)
+
+
+# ──────────────────────────────────────────────────────────────────
+# Progress Tracking
+# ──────────────────────────────────────────────────────────────────
+
+class ProgressSnapshot(Table):
+    """Periodic snapshot of user's IELTS progress."""
+
+    id = UUID(primary_key=True)
+    user = ForeignKey(references=User)
+    snapshot_date = Date()
+    overall_band = Float(null=True)
+    listening_band = Float(null=True)
+    reading_band = Float(null=True)
+    writing_band = Float(null=True)
+    speaking_band = Float(null=True)
+    tests_taken = Integer(default=0)
+    activities_completed = Integer(default=0)
+    strengths = JSON(default=[])
+    weaknesses = JSON(default=[])
+    ai_recommendations = JSON(default=[])
+    created_at = Timestamp(default=TimestampNow())

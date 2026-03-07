@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from app.schemas.base import BaseSchema
+from app.schemas.base import BaseSchema, JsonDict, JsonList
 from pydantic import Field
 
 
@@ -31,16 +31,16 @@ class ConversationMessageResponse(BaseSchema):
     content: str
     audio_url: str | None = None
     timestamp: datetime
-    analysis: dict[str, Any] = {}
+    analysis: JsonDict = {}
 
 
 class ConversationResponse(BaseSchema):
     """Schema for AI conversation response."""
 
     message: ConversationMessageResponse
-    suggestions: list[str] = []
-    vocabulary_tips: list[dict[str, str]] = []
-    grammar_notes: list[str] = []
+    suggestions: JsonList = []
+    vocabulary_tips: JsonList = []
+    grammar_notes: JsonList = []
 
 
 class ConversationSessionResponse(BaseSchema):
@@ -55,13 +55,13 @@ class ConversationSessionResponse(BaseSchema):
     ended_at: datetime | None = None
     duration_seconds: int
     message_count: int
-    vocabulary_used: list[str] = []
+    vocabulary_used: JsonList = []
     grammar_score: float | None = None
     fluency_score: float | None = None
     coherence_score: float | None = None
     overall_score: float | None = None
     ai_summary: str | None = None
-    ai_suggestions: list[str] = []
+    ai_suggestions: JsonList = []
 
 
 class ConversationHistoryResponse(BaseSchema):
@@ -80,8 +80,8 @@ class ConversationAnalysisResponse(BaseSchema):
     coherence_score: float
     vocabulary_score: float
     overall_score: float
-    strengths: list[str]
-    areas_for_improvement: list[str]
-    vocabulary_analysis: dict[str, Any]
-    grammar_errors: list[dict[str, Any]]
-    suggestions: list[str]
+    strengths: JsonList
+    areas_for_improvement: JsonList
+    vocabulary_analysis: JsonDict
+    grammar_errors: JsonList
+    suggestions: JsonList

@@ -1,0 +1,279 @@
+"""IELTS preparation platform API endpoints.
+
+Provides onboarding (placement test), daily study plans, mock tests,
+and progress tracking for the IELTS preparation system.
+"""
+
+from uuid import UUID
+
+from app.schemas.ielts import (
+    DailyStudyPlanResponse,
+    IELTSProfileResponse,
+    IELTSProfileUpdate,
+    MockTestAnswerRequest,
+    MockTestQuestionResponse,
+    MockTestReportResponse,
+    MockTestStartRequest,
+    PlacementAnswerRequest,
+    PlacementQuestionResponse,
+    PlacementResultResponse,
+    PlacementStartRequest,
+    ProgressOverviewResponse,
+    StudyActivityFeedbackResponse,
+    StudyActivitySubmitRequest,
+    TestHistoryResponse,
+)
+from app.services.ielts import ielts_service
+from litestar import Controller, get, post, put
+from litestar.exceptions import NotFoundException
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
+
+
+class IELTSController(Controller):
+    """IELTS preparation platform endpoints."""
+
+    path = "/ielts"
+    tags = ["IELTS"]
+
+    # ── Profile ───────────────────────────────────────────────
+
+    @get(
+        "/profile/{user_id:uuid}",
+        summary="Get IELTS Profile",
+        description="Get the user's IELTS-specific profile including band scores, "
+                    "skill profile, and onboarding status.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_profile(self, user_id: UUID) -> IELTSProfileResponse:
+        result = await ielts_service.get_ielts_profile(user_id)
+        if not result:
+            raise NotFoundException(detail="User not found")
+        return IELTSProfileResponse(**result)
+
+    @put(
+        "/profile/{user_id:uuid}",
+        summary="Update IELTS Profile",
+        description="Update target band score, exam date, and practice preferences.",
+        status_code=HTTP_200_OK,
+    )
+    async def update_profile(self, user_id: UUID, data: IELTSProfileUpdate) -> IELTSProfileResponse:
+        result = await ielts_service.update_ielts_profile(
+            user_id, data.model_dump(exclude_unset=True)
+        )
+        return IELTSProfileResponse(**result)
+
+    # ── Placement Test (Onboarding) ───────────────────────────
+
+    @post(
+        "/placement/start/{user_id:uuid}",
+        summary="Start Placement Test",
+        description="Start the initial diagnostic placement test. Required before "
+                    "accessing the platform if onboarding_completed is false.",
+        status_code=HTTP_201_CREATED,
+    )
+    async def start_placement(
+        self, user_id: UUID, data: PlacementStartRequest
+    ) -> PlacementQuestionResponse:
+        result = await ielts_service.start_placement_test(
+            user_id=user_id,
+            target_band_score=data.target_band_score,
+            exam_date=data.exam_date,
+        )
+        return PlacementQuestionResponse(**result)
+
+    @post(
+        "/placement/answer",
+        summary="Submit Placement Answer",
+        description="Submit an answer during the placement test. Returns the next "
+                    "question or final results if the test is complete.",
+        status_code=HTTP_200_OK,
+    )
+    async def submit_placement_answer(
+        self, data: PlacementAnswerRequest
+    ) -> PlacementQuestionResponse | PlacementResultResponse:
+        result = await ielts_service.submit_placement_answer(
+            thread_id=data.thread_id,
+            answer=data.answer,
+        )
+        if result.get("status") == "completed":
+            return PlacementResultResponse(**result)
+        return PlacementQuestionResponse(**result)
+
+    @get(
+        "/placement/status",
+        summary="Get Placement Status",
+        description="Check current status of a placement test.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_placement_status(
+        self, thread_id: str
+    ) -> PlacementQuestionResponse | PlacementResultResponse:
+        result = await ielts_service.get_placement_status(thread_id)
+        if result.get("error"):
+            raise NotFoundException(detail="Placement test not found")
+        if result.get("status") == "completed":
+            return PlacementResultResponse(**result)
+        return PlacementQuestionResponse(**result)
+
+    # ── Mock Test ─────────────────────────────────────────────
+
+    @post(
+        "/mock-test/start/{user_id:uuid}",
+        summary="Start Mock Test",
+        description="Start an AI-powered IELTS mock test. Can be a full test "
+                    "or section-specific. Difficulty adapts to user's level.",
+        status_code=HTTP_201_CREATED,
+    )
+    async def start_mock_test(
+        self, user_id: UUID, data: MockTestStartRequest
+    ) -> MockTestQuestionResponse:
+        from app.agents.services.exam_service import exam_service
+
+        # Get user context for adaptive difficulty
+        profile = await ielts_service.get_ielts_profile(user_id)
+        current_band = profile.get("current_estimated_band") or 5.0
+        target_band = profile.get("target_band_score") or 7.0
+
+        # Map adaptive difficulty
+        difficulty = data.difficulty
+        if difficulty == "adaptive":
+            if current_band < 5.0:
+                difficulty = "beginner"
+            elif current_band < 6.5:
+                difficulty = "intermediate"
+            elif current_band < 7.5:
+                difficulty = "advanced"
+            else:
+                difficulty = "expert"
+
+        section = data.section or "speaking"
+
+        result = await exam_service.create_exam_session(
+            user_id=str(user_id),
+            exam_type="ielts_academic",
+            section=section,
+            difficulty=difficulty,
+            target_band=target_band,
+        )
+
+        return MockTestQuestionResponse(
+            thread_id=result["thread_id"],
+            status=result.get("status", "awaiting_answer"),
+            section=section,
+            current_part=result.get("current_part", 1),
+            question_index=result.get("question_index", 0),
+            total_questions=result.get("total_questions", 0),
+            question_text=result.get("current_question", {}).get("text", "")
+                if isinstance(result.get("current_question"), dict)
+                else str(result.get("current_question", "")),
+            question_type=result.get("current_question", {}).get("type", "discussion")
+                if isinstance(result.get("current_question"), dict)
+                else "discussion",
+            options=[],
+        )
+
+    @post(
+        "/mock-test/answer",
+        summary="Submit Mock Test Answer",
+        description="Submit an answer in a mock test session.",
+        status_code=HTTP_200_OK,
+    )
+    async def submit_mock_answer(
+        self, data: MockTestAnswerRequest
+    ) -> MockTestQuestionResponse | MockTestReportResponse:
+        from app.agents.services.exam_service import exam_service
+
+        result = await exam_service.answer_question(
+            thread_id=data.thread_id,
+            answer=data.answer,
+        )
+
+        if result.get("status") == "completed":
+            return MockTestReportResponse(
+                thread_id=data.thread_id,
+                status="completed",
+                section=result.get("section"),
+                overall_band=result.get("overall_band"),
+                section_scores=result.get("section_scores", []),
+                evaluations=result.get("evaluations", []),
+                strengths=result.get("strengths", []),
+                weaknesses=result.get("weaknesses", []),
+                recommendations=result.get("recommendations", []),
+                final_report_markdown=result.get("final_report_markdown"),
+            )
+
+        return MockTestQuestionResponse(
+            thread_id=data.thread_id,
+            status=result.get("status", "awaiting_answer"),
+            section=result.get("section", ""),
+            current_part=result.get("current_part", 1),
+            question_index=result.get("question_index", 0),
+            total_questions=result.get("total_questions", 0),
+            question_text=result.get("current_question", {}).get("text", "")
+                if isinstance(result.get("current_question"), dict)
+                else str(result.get("current_question", "")),
+            question_type=result.get("current_question", {}).get("type", "discussion")
+                if isinstance(result.get("current_question"), dict)
+                else "discussion",
+            options=[],
+        )
+
+    # ── Daily Study ───────────────────────────────────────────
+
+    @get(
+        "/study/daily/{user_id:uuid}",
+        summary="Get Daily Study Plan",
+        description="Get today's personalized study plan. Generates one automatically "
+                    "if none exists for today.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_daily_plan(self, user_id: UUID) -> DailyStudyPlanResponse:
+        result = await ielts_service.get_or_generate_daily_plan(user_id)
+        if result.get("error"):
+            raise NotFoundException(detail=result["error"])
+        return DailyStudyPlanResponse(**result)
+
+    @post(
+        "/study/submit",
+        summary="Submit Activity Response",
+        description="Submit a response to a study activity and receive AI feedback.",
+        status_code=HTTP_200_OK,
+    )
+    async def submit_activity(
+        self, data: StudyActivitySubmitRequest
+    ) -> StudyActivityFeedbackResponse:
+        result = await ielts_service.submit_activity_response(
+            activity_id=data.activity_id,
+            user_response=data.response,
+            time_spent_seconds=data.time_spent_seconds,
+        )
+        if result.get("error"):
+            raise NotFoundException(detail=result["error"])
+        return StudyActivityFeedbackResponse(**result)
+
+    # ── Progress Tracking ─────────────────────────────────────
+
+    @get(
+        "/progress/{user_id:uuid}",
+        summary="Get Progress Overview",
+        description="Get comprehensive progress including band score history, "
+                    "section trends, strengths, weaknesses, and recommendations.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_progress(self, user_id: UUID) -> ProgressOverviewResponse:
+        result = await ielts_service.get_progress_overview(user_id)
+        if not result:
+            raise NotFoundException(detail="User not found")
+        return ProgressOverviewResponse(**result)
+
+    @get(
+        "/history/{user_id:uuid}",
+        summary="Get Test History",
+        description="Get paginated list of past test results.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_history(
+        self, user_id: UUID, limit: int = 20, offset: int = 0
+    ) -> TestHistoryResponse:
+        result = await ielts_service.get_test_history(user_id, limit, offset)
+        return TestHistoryResponse(**result)

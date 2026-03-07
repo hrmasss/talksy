@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.schemas.base import BaseSchema
+from app.schemas.base import BaseSchema, JsonDict, JsonList
 from pydantic import Field
 
 # ── Topic Generation ──────────────────────────────────────────────
@@ -25,7 +25,7 @@ class TopicGenerateRequest(BaseSchema):
         pattern="^(listening|reading|writing|speaking)$",
         description="Generate topics for a specific section only.",
     )
-    preferences: dict[str, Any] = Field(default_factory=dict)
+    preferences: JsonDict = Field(default_factory=dict)
 
 
 class TopicGenerateResponse(BaseSchema):
@@ -33,14 +33,14 @@ class TopicGenerateResponse(BaseSchema):
 
     estimated_band: float | None = None
     band_range: str | None = None
-    section_estimates: dict[str, Any] = {}
-    strengths: list[str] = []
-    weaknesses: list[str] = []
+    section_estimates: JsonDict = {}
+    strengths: JsonList = []
+    weaknesses: JsonList = []
     assessment_summary: str | None = None
-    speaking_topics: list[dict[str, Any]] = []
-    writing_topics: list[dict[str, Any]] = []
-    reading_topics: list[dict[str, Any]] = []
-    listening_topics: list[dict[str, Any]] = []
+    speaking_topics: JsonList = []
+    writing_topics: JsonList = []
+    reading_topics: JsonList = []
+    listening_topics: JsonList = []
     study_plan_notes: str | None = None
 
 
@@ -85,7 +85,7 @@ class PracticeExamQuestionResponse(BaseSchema):
     current_part: int = 1
     question_index: int = 0
     total_questions: int = 0
-    current_question: dict[str, Any] | None = None
+    current_question: JsonDict | None = None
 
 
 class PracticeExamReportResponse(BaseSchema):
@@ -95,6 +95,6 @@ class PracticeExamReportResponse(BaseSchema):
     status: str = "completed"
     section: str | None = None
     overall_band: float | None = None
-    section_scores: list[dict[str, Any]] = []
-    evaluations: list[dict[str, Any]] = []
+    section_scores: JsonList = []
+    evaluations: JsonList = []
     final_report_markdown: str | None = None

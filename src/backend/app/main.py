@@ -6,15 +6,18 @@ from app import __version__
 from app.api.health import HealthController
 from app.api.v1 import api_v1_router
 from app.config import settings
+from app.core.exception_handlers import internal_error_handler, validation_exception_handler
 from app.core.logging import logger, setup_logging
 from litestar import Litestar, get
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
+from litestar.exceptions import ValidationException as LitestarValidationException
 from litestar.middleware.logging import LoggingMiddlewareConfig
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import RedocRenderPlugin, StoplightRenderPlugin, SwaggerRenderPlugin
 from litestar.response import Redirect
 from litestar.static_files import create_static_files_router
+from pydantic import ValidationError
 
 
 @get("/", include_in_schema=False)
@@ -126,6 +129,11 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
         compression_config=compression_config,
         openapi_config=openapi_config,
         middleware=[logging_config.middleware],
+        exception_handlers={
+            LitestarValidationException: validation_exception_handler,
+            ValidationError: validation_exception_handler,
+            500: internal_error_handler,
+        },
         debug=settings.debug,
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],

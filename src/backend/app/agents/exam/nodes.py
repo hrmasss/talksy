@@ -15,7 +15,10 @@ from .models import AnswerEvaluation, FinalExamReport
 from .prompts import (
     get_answer_evaluation_prompt,
     get_final_evaluation_prompt,
+    get_listening_examiner_prompt,
+    get_reading_examiner_prompt,
     get_speaking_examiner_prompt,
+    get_user_history_context,
     get_writing_examiner_prompt,
 )
 from .state import (
@@ -107,11 +110,22 @@ async def initialise_exam_node(state: ExamState) -> dict:
             exam_variant=variant,
         )
     else:
-        # reading / listening - simplified for now
-        sys_prompt = (
-            f"You are an IELTS {section.title()} examiner. "
-            f"Generate questions appropriate for band {target_band}."
-        )
+        # reading / listening
+        if section == "reading":
+            sys_prompt = get_reading_examiner_prompt(
+                difficulty_level=difficulty,
+                target_band=target_band,
+                total_questions=total_q,
+                question_number=0,
+                exam_variant=variant,
+            )
+        else:
+            sys_prompt = get_listening_examiner_prompt(
+                difficulty_level=difficulty,
+                target_band=target_band,
+                total_questions=total_q,
+                question_number=0,
+            )
 
     # Append user memory context so the LLM can personalise
     if memory_context:
@@ -175,10 +189,21 @@ async def generate_question_node(state: ExamState) -> dict:
             exam_variant=variant,
         )
     else:
-        sys_prompt = (
-            f"Generate IELTS {section.title()} question #{qn+1}/{total} "
-            f"for band {target_band}."
-        )
+        if section == "reading":
+            sys_prompt = get_reading_examiner_prompt(
+                difficulty_level=difficulty,
+                target_band=target_band,
+                total_questions=total,
+                question_number=qn,
+                exam_variant=variant,
+            )
+        else:
+            sys_prompt = get_listening_examiner_prompt(
+                difficulty_level=difficulty,
+                target_band=target_band,
+                total_questions=total,
+                question_number=qn,
+            )
 
     llm = get_llm(model=settings.llm_model, temperature=0.8)
 
