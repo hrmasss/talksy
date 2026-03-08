@@ -21,6 +21,7 @@ import {
   type DailyStudyPlan,
   type StudyActivity,
 } from "@/lib/ielts-api";
+import { useOnboardingGate } from "./layout";
 
 const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -33,6 +34,7 @@ const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: s
 };
 
 export default function DailyStudyPage() {
+  const { requireOnboarding } = useOnboardingGate();
   const [plan, setPlan] = useState<DailyStudyPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<StudyActivity | null>(null);

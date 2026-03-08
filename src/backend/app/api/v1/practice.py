@@ -6,6 +6,7 @@ as opposed to the DB-backed ExamController for static exam CRUD.
 
 from app.agents.services.exam_service import exam_service as practice_exam_service
 from app.agents.services.topic_service import topic_generator_service
+from app.core.auth import require_auth
 from app.schemas.practice import (
     PracticeExamAnswerRequest,
     PracticeExamQuestionResponse,
@@ -14,7 +15,7 @@ from app.schemas.practice import (
     TopicGenerateRequest,
     TopicGenerateResponse,
 )
-from litestar import Controller, get, post
+from litestar import Controller, Request, get, post
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 
@@ -23,6 +24,7 @@ class PracticeController(Controller):
 
     path = "/practice"
     tags = ["Practice"]
+    guards = [require_auth]
 
     # ── Topic Generation ──────────────────────────────────────
 
@@ -35,11 +37,9 @@ class PracticeController(Controller):
         ),
         status_code=HTTP_201_CREATED,
     )
-    async def generate_topics(self, data: TopicGenerateRequest) -> TopicGenerateResponse:
+    async def generate_topics(self, request: Request, data: TopicGenerateRequest) -> TopicGenerateResponse:
         """Generate personalised IELTS practice topics."""
-        # TODO: Get user_id from authentication
-        from uuid import uuid4
-        user_id = str(uuid4())
+        user_id = str(request.state.user_id)
 
         result = await topic_generator_service.generate_topics(
             user_id=user_id,
@@ -65,12 +65,10 @@ class PracticeController(Controller):
         status_code=HTTP_201_CREATED,
     )
     async def start_practice_exam(
-        self, data: PracticeExamStartRequest
+        self, request: Request, data: PracticeExamStartRequest
     ) -> PracticeExamQuestionResponse:
         """Kick off a new IELTS practice exam session."""
-        # TODO: Get user_id from authentication
-        from uuid import uuid4
-        user_id = str(uuid4())
+        user_id = str(request.state.user_id)
 
         result = await practice_exam_service.create_exam_session(
             user_id=user_id,

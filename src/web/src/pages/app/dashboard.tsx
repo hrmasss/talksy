@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { getProgress, getDailyPlan, type ProgressOverview, type DailyStudyPlan } from "@/lib/ielts-api";
+import { useOnboardingGate } from "./layout";
 
 const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -30,6 +31,8 @@ const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: s
 };
 
 export default function DashboardPage() {
+  const { requireOnboarding } = useOnboardingGate();
+  const navigate = useNavigate();
   const [progress, setProgress] = useState<ProgressOverview | null>(null);
   const [dailyPlan, setDailyPlan] = useState<DailyStudyPlan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -195,33 +198,34 @@ export default function DashboardPage() {
                 ).map((item) => {
                   const meta = sectionMeta[item.section];
                   return (
-                    <Link
+                    <Button
                       key={item.section}
-                      to={`/app/mock-test?section=${item.section}`}
+                      variant="outline"
+                      className="h-auto w-full justify-start gap-3 p-3"
+                      onClick={() => {
+                        if (!requireOnboarding()) {
+                          navigate(`/app/mock-test?section=${item.section}`);
+                        }
+                      }}
                     >
-                      <Button
-                        variant="outline"
-                        className="h-auto w-full justify-start gap-3 p-3"
+                      <div
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-lg",
+                          meta.bg
+                        )}
                       >
-                        <div
-                          className={cn(
-                            "flex h-8 w-8 items-center justify-center rounded-lg",
-                            meta.bg
-                          )}
-                        >
-                          <meta.icon className={cn("h-4 w-4", meta.color)} />
+                        <meta.icon className={cn("h-4 w-4", meta.color)} />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-sm font-medium">
+                          {item.label}
                         </div>
-                        <div className="text-left">
-                          <div className="text-sm font-medium">
-                            {item.label}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            AI-generated questions
-                          </div>
+                        <div className="text-xs text-muted-foreground">
+                          AI-generated questions
                         </div>
-                        <RiArrowRightLine className="ml-auto h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </Link>
+                      </div>
+                      <RiArrowRightLine className="ml-auto h-4 w-4 text-muted-foreground" />
+                    </Button>
                   );
                 })}
               </div>

@@ -23,6 +23,7 @@ import {
   type MockTestQuestion,
   type MockTestReport,
 } from "@/lib/ielts-api";
+import { useOnboardingGate } from "./layout";
 
 const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -39,6 +40,7 @@ const sections = [
 export default function MockTestPage() {
   const [searchParams] = useSearchParams();
   const initialSection = searchParams.get("section") || "";
+  const { requireOnboarding } = useOnboardingGate();
 
   const [phase, setPhase] = useState<Phase>(initialSection ? "setup" : "setup");
   const [selectedSection, setSelectedSection] = useState(initialSection);
@@ -48,6 +50,7 @@ export default function MockTestPage() {
   const [answer, setAnswer] = useState("");
 
   async function handleStart() {
+    if (requireOnboarding()) return;
     setLoading(true);
     try {
       const q = await startMockTest(DEMO_USER_ID, {
@@ -197,7 +200,7 @@ export default function MockTestPage() {
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
                 placeholder="Type your answer here…"
-                className="min-h-[120px] resize-none"
+                className="min-h-30 resize-none"
               />
             )}
           </CardContent>
@@ -260,7 +263,7 @@ export default function MockTestPage() {
                   <span className="text-sm capitalize">{s.section}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">{s.band_score}</span>
-                    <span className="max-w-[180px] truncate text-xs text-muted-foreground">
+                    <span className="max-w-45 truncate text-xs text-muted-foreground">
                       {s.detail}
                     </span>
                   </div>

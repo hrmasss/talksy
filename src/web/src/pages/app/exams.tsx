@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RiBookLine, RiTimeLine, RiArrowRightLine } from "@remixicon/react";
+import { useOnboardingGate } from "./layout";
 
 const examTypes = [
   {
@@ -35,6 +36,8 @@ const examTypes = [
 ];
 
 export default function ExamsPage() {
+  const { requireOnboarding } = useOnboardingGate();
+
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-8">
@@ -80,6 +83,7 @@ export default function ExamsPage() {
               <Button
                 variant="ghost"
                 className="w-full justify-between group-hover:bg-accent"
+                onClick={() => requireOnboarding()}
               >
                 Start Practice
                 <RiArrowRightLine className="h-4 w-4" />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,9 +18,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import {
   RiMicLine,
-  RiBookLine,
-  RiHistoryLine,
   RiLogoutBoxLine,
   RiSettingsLine,
   RiUser3Line,
@@ -33,36 +47,68 @@ import {
   RiBookOpenLine,
   RiEdit2Line,
   RiVoiceprintLine,
+  RiRoadMapLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 
-const navItems = [
+// ── Onboarding Gate Context ──────────────────────────────────
+interface OnboardingGateContextValue {
+  requireOnboarding: () => boolean;
+}
+
+const OnboardingGateContext = createContext<OnboardingGateContextValue | null>(null);
+
+/**
+ * Hook for child pages to gate features behind onboarding.
+ * Call `requireOnboarding()` before starting any exam/feature.
+ * Returns `true` if the user still needs onboarding (modal was shown),
+ * `false` if they can proceed.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useOnboardingGate() {
+  const ctx = useContext(OnboardingGateContext);
+  if (!ctx) throw new Error("useOnboardingGate must be used within AppLayout");
+  return ctx;
+}
+
+// ── Nav items ────────────────────────────────────────────────
+const mainNavItems = [
   { path: "/app/dashboard", icon: RiDashboardLine, label: "Dashboard" },
   { path: "/app", icon: RiMicLine, label: "Practice", exact: true },
-  { path: "/app/mock-test", icon: RiFlashlightLine, label: "Mock Test" },
-  { path: "/app/daily-study", icon: RiCalendarCheckLine, label: "Study" },
-  { path: "/app/progress", icon: RiBarChartLine, label: "Progress" },
+  { path: "/app/mock-test", icon: RiFlashlightLine, label: "Mock Test", gated: true },
+  { path: "/app/daily-study", icon: RiCalendarCheckLine, label: "Study", gated: true },
+  { path: "/app/roadmap", icon: RiRoadMapLine, label: "Roadmap", gated: true },
+  { path: "/app/progress", icon: RiBarChartLine, label: "Progress", gated: true },
 ];
 
 export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, setUser } = useAuth();
+  const { user, logout } = useAuth();
 
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
 
-  const showOnboardingModal =
-    !!user && !user.onboarding_completed && !onboardingDismissed;
+  // Show the welcome modal on first load if not onboarded
+  const [welcomeShown, setWelcomeShown] = useState(() => {
+    return !!user && !user.onboarding_completed;
+  });
 
-  const handleSkipOnboarding = () => {
-    setOnboardingDismissed(true);
-  };
+  const handleDismissWelcome = () => setWelcomeShown(false);
+  const handleDismissGate = () => setShowOnboardingModal(false);
 
   const handleStartOnboarding = () => {
-    setOnboardingDismissed(true);
+    setWelcomeShown(false);
+    setShowOnboardingModal(false);
     navigate("/app/onboarding");
   };
+
+  // Gate function: returns true if blocked (modal shown), false if OK to proceed
+  const requireOnboarding = useCallback(() => {
+    if (!user || user.onboarding_completed) return false;
+    setShowOnboardingModal(true);
+    return true;
+  }, [user]);
 
   const initials = user?.full_name
     ? user.full_name
@@ -73,116 +119,164 @@ export default function AppLayout() {
         .slice(0, 2)
     : "U";
 
+  const isModalOpen = welcomeShown || showOnboardingModal;
+  const dismissModal = welcomeShown ? handleDismissWelcome : handleDismissGate;
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-          <div className="flex items-center gap-8">
-            <Link to="/app" className="text-lg font-semibold tracking-tight">
-              Talksy
-            </Link>
-            <nav className="hidden items-center gap-1 md:flex">
-              {navItems.map((item) => {
-                const isActive = item.exact
-                  ? location.pathname === item.path
-                  : location.pathname.startsWith(item.path);
-                return (
-                  <Link key={item.path} to={item.path}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "gap-2 text-muted-foreground",
-                        isActive && "bg-accent text-foreground"
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </Button>
+    <OnboardingGateContext.Provider value={{ requireOnboarding }}>
+      <SidebarProvider>
+        {/* ── Sidebar ──────────────────────────────────── */}
+        <Sidebar variant="sidebar" collapsible="icon">
+          <SidebarHeader>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton size="lg" asChild>
+                  <Link to="/app">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                      <RiMicLine className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col gap-0.5 leading-none">
+                      <span className="font-semibold">Talksy</span>
+                      <span className="text-xs text-muted-foreground">IELTS Prep</span>
+                    </div>
                   </Link>
-                );
-              })}
-            </nav>
-          </div>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem className="gap-2">
-                <RiUser3Line className="h-4 w-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2">
-                <RiSettingsLine className="h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="gap-2 text-destructive"
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
-              >
-                <RiLogoutBoxLine className="h-4 w-4" />
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+          <SidebarSeparator />
 
-      {/* Main Content */}
-      <main className="flex-1">
-        <Outlet />
-      </main>
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {mainNavItems.map((item) => {
+                    const isActive = item.exact
+                      ? location.pathname === item.path
+                      : location.pathname.startsWith(item.path);
 
-      {/* Mobile Navigation */}
-      <nav className="sticky bottom-0 border-t border-border/50 bg-background md:hidden">
-        <div className="flex items-center justify-around py-2">
-          {navItems.map((item) => {
-            const isActive = item.exact
-              ? location.pathname === item.path
-              : location.pathname.startsWith(item.path);
-            return (
-              <Link key={item.path} to={item.path}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "flex-col gap-1 h-auto py-2 text-muted-foreground",
-                    isActive && "text-primary"
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  <span className="text-xs">{item.label}</span>
-                </Button>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+                    return (
+                      <SidebarMenuItem key={item.path}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          tooltip={item.label}
+                          asChild={!item.gated || !user || user.onboarding_completed}
+                          onClick={
+                            item.gated && user && !user.onboarding_completed
+                              ? (e: React.MouseEvent) => {
+                                  e.preventDefault();
+                                  setShowOnboardingModal(true);
+                                }
+                              : undefined
+                          }
+                        >
+                          {item.gated && user && !user.onboarding_completed ? (
+                            <span className="flex items-center gap-2 opacity-60">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          ) : (
+                            <Link to={item.path}>
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </Link>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
 
-      {/* Onboarding Modal */}
-      <Dialog open={showOnboardingModal} onOpenChange={(open) => { if (!open) handleSkipOnboarding(); }}>
+          <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <SidebarMenuButton size="lg">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                          {initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col gap-0.5 leading-none">
+                        <span className="text-sm font-medium truncate">
+                          {user?.full_name || "User"}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {user?.email || ""}
+                        </span>
+                      </div>
+                    </SidebarMenuButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="top"
+                    align="start"
+                    className="w-[--radix-dropdown-menu-trigger-width]"
+                  >
+                    <DropdownMenuItem className="gap-2">
+                      <RiUser3Line className="h-4 w-4" />
+                      Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="gap-2">
+                      <RiSettingsLine className="h-4 w-4" />
+                      Settings
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="gap-2 text-destructive"
+                      onClick={() => {
+                        logout();
+                        navigate("/login");
+                      }}
+                    >
+                      <RiLogoutBoxLine className="h-4 w-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+        </Sidebar>
+
+        {/* ── Main Area ────────────────────────────────── */}
+        <SidebarInset>
+          <header className="sticky top-0 z-40 flex h-12 items-center gap-2 border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
+            <SidebarTrigger />
+            <span className="text-sm font-medium text-muted-foreground">
+              {mainNavItems.find((i) =>
+                i.exact
+                  ? location.pathname === i.path
+                  : location.pathname.startsWith(i.path)
+              )?.label || "Talksy"}
+            </span>
+          </header>
+
+          <main className="flex-1">
+            <Outlet />
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+
+      {/* ── Onboarding Modal (welcome + gate) ────────── */}
+      <Dialog open={isModalOpen} onOpenChange={(open) => { if (!open) dismissModal(); }}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogHeader className="text-center sm:text-center">
             <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <RiStarLine className="h-7 w-7 text-primary" />
             </div>
-            <DialogTitle className="text-xl">Welcome to Talksy!</DialogTitle>
+            <DialogTitle className="text-xl">
+              {welcomeShown ? "Welcome to Talksy!" : "Complete Onboarding First"}
+            </DialogTitle>
             <DialogDescription>
-              Take a quick placement test to help us understand your current level
-              and personalize your learning experience.
+              {welcomeShown
+                ? "Take a quick placement test to help us understand your current level and personalize your learning experience."
+                : "You need to complete the placement test before accessing this feature. It helps us personalize your learning path."}
             </DialogDescription>
           </DialogHeader>
 
@@ -210,12 +304,12 @@ export default function AppLayout() {
             <Button className="w-full" size="lg" onClick={handleStartOnboarding}>
               Start Placement Test
             </Button>
-            <Button variant="ghost" className="w-full text-muted-foreground" onClick={handleSkipOnboarding}>
-              Skip for now
+            <Button variant="ghost" className="w-full text-muted-foreground" onClick={dismissModal}>
+              {welcomeShown ? "Skip for now" : "Go back"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </OnboardingGateContext.Provider>
   );
 }
