@@ -1,5 +1,6 @@
 """AI service for LLM interactions."""
 
+import contextlib
 from typing import Any
 
 from app.agents.common.llm import get_llm
@@ -17,10 +18,8 @@ class AIService:
     def llm(self):
         """Get or create LLM instance."""
         if self._llm is None:
-            try:
+            with contextlib.suppress(ValueError):
                 self._llm = get_llm()
-            except ValueError:
-                pass
         return self._llm
 
     async def generate_response(self, prompt: str, system_prompt: str | None = None) -> str:

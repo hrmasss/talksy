@@ -3,21 +3,31 @@ from datetime import datetime
 from typing import Any, Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, ConfigDict
 
 
-def parse_json_field(v: Any) -> Any:
-    """Parse a JSON string if necessary."""
+def parse_json_dict_field(v: Any) -> dict[str, Any]:
+    """Parse and normalize dict-shaped JSON fields."""
     if isinstance(v, str):
         try:
-            return json.loads(v)
+            v = json.loads(v)
         except (json.JSONDecodeError, TypeError):
             return {}
-    return v or {}
+    return v if isinstance(v, dict) else {}
 
 
-JsonDict = Annotated[dict[str, Any], BeforeValidator(parse_json_field)]
-JsonList = Annotated[list[Any], BeforeValidator(parse_json_field)]
+def parse_json_list_field(v: Any) -> list[Any]:
+    """Parse and normalize list-shaped JSON fields."""
+    if isinstance(v, str):
+        try:
+            v = json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return v if isinstance(v, list) else []
+
+
+JsonDict = Annotated[dict[str, Any], BeforeValidator(parse_json_dict_field)]
+JsonList = Annotated[list[Any], BeforeValidator(parse_json_list_field)]
 
 
 class BaseSchema(BaseModel):
@@ -40,8 +50,8 @@ class BaseSchema(BaseModel):
             try:
                 return json.loads(v)
             except (json.JSONDecodeError, TypeError):
-                return {}
-        return v or {}
+                return v
+        return v
 
 
 class TimestampMixin(BaseModel):

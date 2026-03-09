@@ -18,6 +18,19 @@ def get_daily_study_plan_prompt(
 ) -> str:
     """Prompt for generating a personalized daily study plan."""
 
+    if not isinstance(section_scores, dict):
+        section_scores = {}
+
+    safe_section_scores: dict[str, float | str] = {}
+    for key in ("listening", "reading", "writing", "speaking"):
+        raw = section_scores.get(key)
+        if raw is None:
+            continue
+        try:
+            safe_section_scores[key] = float(raw)
+        except (TypeError, ValueError):
+            continue
+
     history_text = ""
     if recent_history:
         for i, h in enumerate(recent_history[-5:], 1):
@@ -25,7 +38,7 @@ def get_daily_study_plan_prompt(
     else:
         history_text = "  No recent test history.\n"
 
-    weakest_section = min(section_scores, key=section_scores.get) if section_scores else "writing"
+    weakest_section = min(safe_section_scores, key=safe_section_scores.get) if safe_section_scores else "writing"
     band_gap = target_band - current_band
 
     return f"""You are an expert IELTS tutor creating a personalized daily study plan.
@@ -37,10 +50,10 @@ STUDENT PROFILE:
 - Available Practice Time: {practice_time_minutes} minutes
 
 SECTION SCORES:
-- Listening: {section_scores.get('listening', 'N/A')}
-- Reading: {section_scores.get('reading', 'N/A')}
-- Writing: {section_scores.get('writing', 'N/A')}
-- Speaking: {section_scores.get('speaking', 'N/A')}
+        - Listening: {safe_section_scores.get('listening', 'N/A')}
+        - Reading: {safe_section_scores.get('reading', 'N/A')}
+        - Writing: {safe_section_scores.get('writing', 'N/A')}
+        - Speaking: {safe_section_scores.get('speaking', 'N/A')}
 
 STRENGTHS: {', '.join(strengths) if strengths else 'Not yet assessed'}
 WEAKNESSES: {', '.join(weaknesses) if weaknesses else 'Not yet assessed'}

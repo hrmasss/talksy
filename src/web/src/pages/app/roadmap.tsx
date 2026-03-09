@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  RiArrowRightLine,
   RiBookOpenLine,
   RiCheckLine,
   RiEdit2Line,
@@ -30,48 +30,26 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { useOnboardingGate } from "./layout";
-import {
-  generateTopics,
-  type TopicGeneratorResult,
-} from "@/lib/ielts-api";
+import { generateTopics, type TopicGeneratorResult } from "@/lib/ielts-api";
 import { toast } from "sonner";
+import {
+  getPhaseTitle,
+  getRoadmapStorageKey,
+  loadRoadmapPhases,
+  sectionMeta,
+  type Phase,
+  type PhaseQuiz,
+} from "./roadmap-shared";
 
-const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string }> = {
-  listening: { icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },
-  reading: { icon: RiBookOpenLine, color: "text-emerald-600", bg: "bg-emerald-500/10" },
-  writing: { icon: RiEdit2Line, color: "text-amber-600", bg: "bg-amber-500/10" },
-  speaking: { icon: RiMicLine, color: "text-purple-600", bg: "bg-purple-500/10" },
-};
-
-// ── Phase types ──────────────────────────────────────────────
-
-interface PhaseQuiz {
-  question: string;
-  options: string[];
-  correctIndex: number;
-}
-
-interface Phase {
-  id: number;
-  title: string;
-  description: string;
-  topics: TopicGeneratorResult;
-  status: "locked" | "active" | "completed";
-  quizzes: PhaseQuiz[];
-  quizScore: number | null;
-}
-
-// Generate evaluation quizzes from phase topics
 function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
   const quizzes: PhaseQuiz[] = [];
 
-  // From speaking topics
-  for (const t of topics.speaking_topics.slice(0, 1)) {
+  for (const topic of topics.speaking_topics.slice(0, 1)) {
     quizzes.push({
-      question: `In IELTS Speaking Part ${t.part}, what is the best approach for the topic "${t.topic}"?`,
+      question: `In IELTS Speaking Part ${topic.part}, what is the best approach for the topic "${topic.topic}"?`,
       options: [
         "Give one-word answers to save time",
-        `Use vocabulary like: ${t.vocabulary_hints.slice(0, 3).join(", ")}`,
+        `Use vocabulary like: ${topic.vocabulary_hints.slice(0, 3).join(", ")}`,
         "Speak as fast as possible without pausing",
         "Only answer exactly what is asked, nothing more",
       ],
@@ -79,24 +57,22 @@ function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
     });
   }
 
-  // From writing topics
-  for (const t of topics.writing_topics.slice(0, 1)) {
+  for (const topic of topics.writing_topics.slice(0, 1)) {
     quizzes.push({
-      question: `For a "${t.task_type}" writing task, what should you focus on?`,
+      question: `For a "${topic.task_type}" writing task, what should you focus on?`,
       options: [
         "Write as many words as possible",
         "Use only simple vocabulary to avoid mistakes",
-        `Structure your response with a clear outline and use key vocabulary: ${t.key_vocabulary.slice(0, 2).join(", ")}`,
+        `Structure your response with a clear outline and use key vocabulary: ${topic.key_vocabulary.slice(0, 2).join(", ")}`,
         "Copy the prompt wording as much as possible",
       ],
       correctIndex: 2,
     });
   }
 
-  // From reading topics
-  for (const t of topics.reading_topics.slice(0, 1)) {
+  for (const topic of topics.reading_topics.slice(0, 1)) {
     quizzes.push({
-      question: `When answering "${t.question_types[0] || "comprehension"}" questions about "${t.passage_theme}", what strategy works best?`,
+      question: `When answering "${topic.question_types[0] || "comprehension"}" questions about "${topic.passage_theme}", what strategy works best?`,
       options: [
         "Read every word carefully before looking at questions",
         "Scan for keywords and locate specific information",
@@ -107,10 +83,9 @@ function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
     });
   }
 
-  // From listening topics
-  for (const t of topics.listening_topics.slice(0, 1)) {
+  for (const topic of topics.listening_topics.slice(0, 1)) {
     quizzes.push({
-      question: `In IELTS Listening Section ${t.section} about "${t.scenario}", what should you do?`,
+      question: `In IELTS Listening Section ${topic.section} about "${topic.scenario}", what should you do?`,
       options: [
         "Write answers only after the recording ends",
         "Read the questions before the audio plays and predict answers",
@@ -121,7 +96,6 @@ function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
     });
   }
 
-  // General question
   if (topics.weaknesses.length > 0) {
     quizzes.push({
       question: `Based on your profile, "${topics.weaknesses[0]}" is an area to improve. What's the best approach?`,
@@ -138,34 +112,20 @@ function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
   return quizzes;
 }
 
-// ── Main Component ───────────────────────────────────────────
-
 export default function RoadmapPage() {
   const { user } = useAuth();
   const { requireOnboarding } = useOnboardingGate();
-  const roadmapStorageKey = user ? `roadmap_${user.id}` : null;
+  const roadmapStorageKey = getRoadmapStorageKey(user?.id);
 
-  const [phases, setPhases] = useState<Phase[]>(() => {
-    const saved = roadmapStorageKey ? localStorage.getItem(roadmapStorageKey) : null;
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return [];
-  });
+  const [phases, setPhases] = useState<Phase[]>(() => loadRoadmapPhases(roadmapStorageKey));
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
-
-  // Quiz modal state
   const [quizPhaseId, setQuizPhaseId] = useState<number | null>(null);
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
   const [quizComplete, setQuizComplete] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
 
-  // Topic detail modal
-  const [viewingPhase, setViewingPhase] = useState<Phase | null>(null);
-
-  // Persist phases
   useEffect(() => {
     if (!roadmapStorageKey) return;
     if (phases.length > 0) {
@@ -176,31 +136,22 @@ export default function RoadmapPage() {
   }, [phases, roadmapStorageKey]);
 
   useEffect(() => {
-    if (!roadmapStorageKey) return;
-    const saved = localStorage.getItem(roadmapStorageKey);
-    if (!saved) {
-      setPhases([]);
-      return;
-    }
-    try {
-      setPhases(JSON.parse(saved));
-    } catch {
-      setPhases([]);
-    }
+    setPhases(loadRoadmapPhases(roadmapStorageKey));
   }, [roadmapStorageKey]);
 
-  const activePhase = phases.find((p) => p.status === "active");
-  const completedCount = phases.filter((p) => p.status === "completed").length;
+  const activePhase = phases.find((phase) => phase.status === "active");
+  const completedCount = phases.filter((phase) => phase.status === "completed").length;
 
   async function handleGenerate() {
     if (!user || requireOnboarding()) return;
 
     setGenerating(true);
     setError("");
+
     try {
       const result = await generateTopics(user.id, {
-        target_score: user?.target_band_score ?? 7.0,
-        current_level_description: user?.current_estimated_band
+        target_score: user.target_band_score ?? 7.0,
+        current_level_description: user.current_estimated_band
           ? `Currently at band ${user.current_estimated_band}`
           : undefined,
       });
@@ -219,7 +170,7 @@ export default function RoadmapPage() {
         quizScore: null,
       };
 
-      setPhases((prev) => [...prev, newPhase]);
+      setPhases((current) => [...current, newPhase]);
       toast.success("Roadmap phase generated.");
     } catch (e) {
       const message = getUserFacingErrorMessage(
@@ -242,42 +193,42 @@ export default function RoadmapPage() {
   }
 
   function handleQuizAnswer(optionIndex: number) {
-    const phase = phases.find((p) => p.id === quizPhaseId);
+    const phase = phases.find((item) => item.id === quizPhaseId);
     if (!phase) return;
 
     const newAnswers = [...quizAnswers, optionIndex];
     setQuizAnswers(newAnswers);
 
     if (newAnswers.length >= phase.quizzes.length) {
-      // Calculate score
       let correct = 0;
-      phase.quizzes.forEach((q, i) => {
-        if (newAnswers[i] === q.correctIndex) correct++;
+      phase.quizzes.forEach((question, index) => {
+        if (newAnswers[index] === question.correctIndex) correct++;
       });
+
       const score = Math.round((correct / phase.quizzes.length) * 100);
       setQuizScore(score);
       setQuizComplete(true);
 
-      // Pass threshold: 60%
       if (score >= 60) {
-        setPhases((prev) =>
-          prev.map((p, pIdx) => {
-            if (p.id === quizPhaseId) return { ...p, status: "completed", quizScore: score };
-            // Unlock next phase
-            if (pIdx > 0 && prev[pIdx - 1].id === quizPhaseId && p.status === "locked")
-              return { ...p, status: "active" };
-            return p;
+        setPhases((current) =>
+          current.map((item, itemIndex) => {
+            if (item.id === quizPhaseId) return { ...item, status: "completed", quizScore: score };
+            if (itemIndex > 0 && current[itemIndex - 1].id === quizPhaseId && item.status === "locked") {
+              return { ...item, status: "active" };
+            }
+            return item;
           })
         );
-      } else {
-        // Record failed score but keep active
-        setPhases((prev) =>
-          prev.map((p) => (p.id === quizPhaseId ? { ...p, quizScore: score } : p))
-        );
+        return;
       }
-    } else {
-      setQuizIndex(newAnswers.length);
+
+      setPhases((current) =>
+        current.map((item) => (item.id === quizPhaseId ? { ...item, quizScore: score } : item))
+      );
+      return;
     }
+
+    setQuizIndex(newAnswers.length);
   }
 
   function handleCloseQuiz() {
@@ -287,14 +238,13 @@ export default function RoadmapPage() {
 
   const currentQuiz =
     quizPhaseId != null
-      ? phases.find((p) => p.id === quizPhaseId)?.quizzes[quizIndex]
+      ? phases.find((phase) => phase.id === quizPhaseId)?.quizzes[quizIndex]
       : null;
   const totalQuizQuestions =
     quizPhaseId != null
-      ? phases.find((p) => p.id === quizPhaseId)?.quizzes.length ?? 0
+      ? phases.find((phase) => phase.id === quizPhaseId)?.quizzes.length ?? 0
       : 0;
 
-  // ── Empty state ────────────────────────────────────────────
   if (phases.length === 0) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-12">
@@ -305,7 +255,7 @@ export default function RoadmapPage() {
           <h1 className="text-2xl font-bold tracking-tight">Your Learning Roadmap</h1>
           <p className="mt-3 text-muted-foreground">
             AI will generate a personalized study roadmap for you, broken into phases.
-            Complete each phase's content and pass the evaluation quiz to unlock the next phase.
+            Complete each phase&apos;s content and pass the evaluation quiz to unlock the next phase.
           </p>
 
           {error && (
@@ -331,16 +281,11 @@ export default function RoadmapPage() {
             ))}
           </div>
 
-          <Button
-            size="lg"
-            className="mt-8 gap-2"
-            onClick={handleGenerate}
-            disabled={generating}
-          >
+          <Button size="lg" className="mt-8 gap-2" onClick={handleGenerate} disabled={generating}>
             {generating ? (
               <>
                 <RiLoader4Line className="h-4 w-4 animate-spin" />
-                Generating Phase 1…
+                Generating Phase 1...
               </>
             ) : (
               <>
@@ -354,7 +299,6 @@ export default function RoadmapPage() {
     );
   }
 
-  // ── Roadmap view ───────────────────────────────────────────
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -386,10 +330,8 @@ export default function RoadmapPage() {
         </div>
       )}
 
-      {/* Phase timeline */}
       <div className="relative space-y-4">
-        {/* Vertical line */}
-        <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
+        <div className="absolute bottom-0 left-5 top-0 w-px bg-border" />
 
         {phases.map((phase) => {
           const isLocked = phase.status === "locked";
@@ -398,7 +340,6 @@ export default function RoadmapPage() {
 
           return (
             <div key={phase.id} className="relative pl-12">
-              {/* Timeline dot */}
               <div
                 className={cn(
                   "absolute left-3 top-4 flex h-5 w-5 items-center justify-center rounded-full border-2",
@@ -429,14 +370,12 @@ export default function RoadmapPage() {
                       <div className="flex items-center gap-2">
                         <CardTitle className="text-base">{phase.title}</CardTitle>
                         {isCompleted && (
-                          <Badge className="bg-emerald-500/10 text-emerald-600 text-xs">
+                          <Badge className="bg-emerald-500/10 text-xs text-emerald-600">
                             Completed
                           </Badge>
                         )}
                         {isActive && (
-                          <Badge className="bg-primary/10 text-primary text-xs">
-                            Active
-                          </Badge>
+                          <Badge className="bg-primary/10 text-xs text-primary">Active</Badge>
                         )}
                         {isLocked && (
                           <Badge variant="secondary" className="text-xs">
@@ -444,9 +383,7 @@ export default function RoadmapPage() {
                           </Badge>
                         )}
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {phase.description}
-                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">{phase.description}</p>
                     </div>
                     {phase.quizScore != null && (
                       <div className="text-right">
@@ -465,7 +402,6 @@ export default function RoadmapPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-3">
-                  {/* Topic counts */}
                   <div className="flex flex-wrap gap-2">
                     {phase.topics.speaking_topics.length > 0 && (
                       <Badge variant="secondary" className="gap-1 text-xs">
@@ -493,17 +429,13 @@ export default function RoadmapPage() {
                     )}
                   </div>
 
-                  {/* Actions */}
                   {!isLocked && (
                     <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => setViewingPhase(phase)}
-                      >
-                        <RiBookOpenLine className="h-3.5 w-3.5" />
-                        View Content
+                      <Button asChild variant="outline" size="sm" className="gap-1.5">
+                        <Link to={`/app/roadmap/${phase.id}`}>
+                          <RiBookOpenLine className="h-3.5 w-3.5" />
+                          View Content
+                        </Link>
                       </Button>
                       {isActive && (
                         <Button
@@ -534,8 +466,7 @@ export default function RoadmapPage() {
           );
         })}
 
-        {/* Generate next phase prompt */}
-        {phases.every((p) => p.status === "completed") && (
+        {phases.every((phase) => phase.status === "completed") && (
           <div className="relative pl-12">
             <div className="absolute left-3 top-4 flex h-5 w-5 items-center justify-center rounded-full border-2 border-dashed border-primary/50">
               <RiStarLine className="h-2.5 w-2.5 text-primary" />
@@ -567,19 +498,17 @@ export default function RoadmapPage() {
         )}
       </div>
 
-      {/* ── Quiz Modal ──────────────────────────────────────── */}
       <Dialog open={quizPhaseId != null} onOpenChange={(open) => { if (!open) handleCloseQuiz(); }}>
         <DialogContent className="sm:max-w-lg">
           {!quizComplete && currentQuiz ? (
             <>
               <DialogHeader>
                 <DialogTitle className="text-base">
-                  Phase Evaluation — Question {quizIndex + 1} of {totalQuizQuestions}
+                  Phase Evaluation - Question {quizIndex + 1} of {totalQuizQuestions}
                 </DialogTitle>
                 <DialogDescription className="sr-only">Answer the quiz question</DialogDescription>
               </DialogHeader>
 
-              {/* Progress */}
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
@@ -588,20 +517,18 @@ export default function RoadmapPage() {
               </div>
 
               <div className="py-2">
-                <p className="mb-4 text-sm leading-relaxed font-medium">
-                  {currentQuiz.question}
-                </p>
+                <p className="mb-4 text-sm font-medium leading-relaxed">{currentQuiz.question}</p>
                 <div className="space-y-2">
-                  {currentQuiz.options.map((opt, i) => (
+                  {currentQuiz.options.map((option, index) => (
                     <button
-                      key={i}
-                      onClick={() => handleQuizAnswer(i)}
+                      key={index}
+                      onClick={() => handleQuizAnswer(index)}
                       className="w-full rounded-lg border border-border/50 p-3 text-left text-sm transition-all hover:border-primary hover:bg-primary/5"
                     >
                       <span className="mr-2 font-medium text-muted-foreground">
-                        {String.fromCharCode(65 + i)}.
+                        {String.fromCharCode(65 + index)}.
                       </span>
-                      {opt}
+                      {option}
                     </button>
                   ))}
                 </div>
@@ -627,7 +554,7 @@ export default function RoadmapPage() {
                 </DialogTitle>
                 <DialogDescription>
                   {quizScore >= 60
-                    ? `You scored ${quizScore}% — the next phase is now unlocked!`
+                    ? `You scored ${quizScore}% - the next phase is now unlocked!`
                     : `You scored ${quizScore}%. Review the phase content and try again (60% needed).`}
                 </DialogDescription>
               </DialogHeader>
@@ -640,206 +567,6 @@ export default function RoadmapPage() {
           ) : null}
         </DialogContent>
       </Dialog>
-
-      {/* ── Phase Content Modal ─────────────────────────────── */}
-      <Dialog open={viewingPhase != null} onOpenChange={(open) => { if (!open) setViewingPhase(null); }}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-          {viewingPhase && (
-            <>
-              <DialogHeader>
-                <DialogTitle>{viewingPhase.title}</DialogTitle>
-                <DialogDescription>{viewingPhase.description}</DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6 py-2">
-                {/* Speaking Topics */}
-                {viewingPhase.topics.speaking_topics.length > 0 && (
-                  <div>
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <div className="flex h-6 w-6 items-center justify-center rounded bg-purple-500/10">
-                        <RiMicLine className="h-3.5 w-3.5 text-purple-600" />
-                      </div>
-                      Speaking Topics
-                    </h3>
-                    <div className="space-y-3">
-                      {viewingPhase.topics.speaking_topics.map((t, i) => (
-                        <Card key={i}>
-                          <CardContent className="pt-4 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">{t.topic}</span>
-                              <Badge variant="secondary" className="text-xs">Part {t.part}</Badge>
-                            </div>
-                            {t.cue_card && (
-                              <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2 italic">
-                                {t.cue_card}
-                              </p>
-                            )}
-                            {t.questions.length > 0 && (
-                              <div>
-                                <span className="text-xs font-medium text-muted-foreground">Questions:</span>
-                                <ul className="mt-1 space-y-0.5">
-                                  {t.questions.map((q, qi) => (
-                                    <li key={qi} className="flex gap-1.5 text-xs text-muted-foreground">
-                                      <RiArrowRightLine className="mt-0.5 h-3 w-3 shrink-0 text-purple-400" />
-                                      {q}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {t.vocabulary_hints.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {t.vocabulary_hints.map((v, vi) => (
-                                  <Badge key={vi} variant="secondary" className="text-[10px]">
-                                    {v}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Writing Topics */}
-                {viewingPhase.topics.writing_topics.length > 0 && (
-                  <div>
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <div className="flex h-6 w-6 items-center justify-center rounded bg-amber-500/10">
-                        <RiEdit2Line className="h-3.5 w-3.5 text-amber-600" />
-                      </div>
-                      Writing Tasks
-                    </h3>
-                    <div className="space-y-3">
-                      {viewingPhase.topics.writing_topics.map((t, i) => (
-                        <Card key={i}>
-                          <CardContent className="pt-4 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">{t.task_type}</span>
-                              <Badge variant="secondary" className="text-xs">Task {t.task}</Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{t.prompt}</p>
-                            {t.sample_outline && (
-                              <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2 italic">
-                                {t.sample_outline}
-                              </p>
-                            )}
-                            {t.key_vocabulary.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {t.key_vocabulary.map((v, vi) => (
-                                  <Badge key={vi} variant="secondary" className="text-[10px]">
-                                    {v}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Reading Topics */}
-                {viewingPhase.topics.reading_topics.length > 0 && (
-                  <div>
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-500/10">
-                        <RiBookOpenLine className="h-3.5 w-3.5 text-emerald-600" />
-                      </div>
-                      Reading Themes
-                    </h3>
-                    <div className="space-y-3">
-                      {viewingPhase.topics.reading_topics.map((t, i) => (
-                        <Card key={i}>
-                          <CardContent className="pt-4 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">{t.passage_theme}</span>
-                              <Badge variant="secondary" className="text-xs capitalize">
-                                {t.difficulty}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {t.question_types.map((qt, qi) => (
-                                <Badge key={qi} variant="secondary" className="text-[10px]">
-                                  {qt}
-                                </Badge>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Listening Topics */}
-                {viewingPhase.topics.listening_topics.length > 0 && (
-                  <div>
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500/10">
-                        <RiHeadphoneLine className="h-3.5 w-3.5 text-blue-600" />
-                      </div>
-                      Listening Scenarios
-                    </h3>
-                    <div className="space-y-3">
-                      {viewingPhase.topics.listening_topics.map((t, i) => (
-                        <Card key={i}>
-                          <CardContent className="pt-4 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">{t.scenario}</span>
-                              <Badge variant="secondary" className="text-xs">
-                                Section {t.section}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {t.question_types.map((qt, qi) => (
-                                <Badge key={qi} variant="secondary" className="text-[10px]">
-                                  {qt}
-                                </Badge>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Study Notes */}
-                {viewingPhase.topics.study_plan_notes && (
-                  <div className="rounded-lg border border-border/50 bg-muted/30 p-4">
-                    <h3 className="mb-2 text-sm font-semibold flex items-center gap-2">
-                      <RiStarLine className="h-4 w-4 text-primary" />
-                      Study Notes
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {viewingPhase.topics.study_plan_notes}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
-}
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function getPhaseTitle(num: number, result: TopicGeneratorResult): string {
-  const titles: Record<number, string> = {
-    1: "Foundation",
-    2: "Building Skills",
-    3: "Advanced Practice",
-    4: "Exam Simulation",
-    5: "Final Polish",
-  };
-  if (titles[num]) return titles[num];
-  if (result.weaknesses.length > 0) return result.weaknesses[0];
-  return `Advanced ${num}`;
 }

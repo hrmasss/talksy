@@ -59,6 +59,41 @@ def _normalize_skill_profile(value: Any) -> dict[str, list[str]]:
     return normalized
 
 
+def _normalize_json_list(value: Any) -> list[Any]:
+    """Return a safe list from DB JSON or stringified JSON."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+
+    return value if isinstance(value, list) else []
+
+
+def _normalize_section_scores(value: Any) -> dict[str, float]:
+    """Return a safe section score mapping from DB JSON or stringified JSON."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: dict[str, float] = {}
+    for key in ("listening", "reading", "writing", "speaking"):
+        raw = value.get(key)
+        if raw is None:
+            continue
+        try:
+            normalized[key] = float(raw)
+        except (TypeError, ValueError):
+            continue
+
+    return normalized
+
+
 class IELTSService:
     """Manages the full IELTS preparation lifecycle."""
 
@@ -75,7 +110,7 @@ class IELTSService:
             "preferred_daily_practice_time": user.get("preferred_daily_practice_time"),
             "current_estimated_band": user.get("current_estimated_band"),
             "skill_profile": _normalize_skill_profile(user.get("skill_profile", {})),
-            "section_scores": user.get("section_scores", {}),
+            "section_scores": _normalize_section_scores(user.get("section_scores", {})),
             "onboarding_completed": user.get("onboarding_completed", False),
         }
 
@@ -163,7 +198,7 @@ class IELTSService:
         if not pt:
             return
 
-        section_scores = result.get("section_scores", {})
+        section_scores = _normalize_section_scores(result.get("section_scores", {}))
 
         # Update placement test record
         await PlacementTest.update({
@@ -239,7 +274,7 @@ class IELTSService:
         }
 
     def _format_placement_result(self, state: dict[str, Any], thread_id: str) -> dict[str, Any]:
-        section_scores = state.get("section_scores", {})
+        section_scores = _normalize_section_scores(state.get("section_scores", {}))
         return {
             "thread_id": thread_id,
             "status": "completed",
@@ -290,7 +325,7 @@ class IELTSService:
         target_band = user.get("target_band_score") or 7.0
         practice_time = user.get("preferred_daily_practice_time") or 30
         skill_profile = _normalize_skill_profile(user.get("skill_profile", {}))
-        section_scores = user.get("section_scores", {})
+        section_scores = _normalize_section_scores(user.get("section_scores", {}))
 
         # Get recent test history
         recent = await ExamAttempt.select().where(
@@ -492,7 +527,7 @@ class IELTSService:
         )
 
         skill_profile = _normalize_skill_profile(user.get("skill_profile", {}))
-        section_scores = user.get("section_scores", {})
+        section_scores = _normalize_section_scores(user.get("section_scores", {}))
         exam_date = user.get("exam_date")
         days_until_exam = (exam_date - date.today()).days if exam_date else None
 
@@ -504,8 +539,8 @@ class IELTSService:
             "total_activities_completed": total_activities,
             "section_scores": section_scores,
             "skill_profile": skill_profile,
-            "recent_scores": recent_scores,
-            "score_history": score_history,
+            "recent_scores": _normalize_json_list(recent_scores),
+            "score_history": _normalize_json_list(score_history),
             "strengths": skill_profile.get("strengths", []),
             "weaknesses": skill_profile.get("weaknesses", []),
             "recommendations": skill_profile.get("focus_areas", []),
@@ -547,7 +582,7 @@ class IELTSService:
         if not user:
             return
 
-        current_scores = user.get("section_scores", {})
+        current_scores = _normalize_section_scores(user.get("section_scores", {}))
         if section and band_score:
             current_scores[section] = band_score
 
