@@ -11,7 +11,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
+import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { RiEyeLine, RiEyeOffLine, RiArrowRightLine } from "@remixicon/react";
+import { toast } from "sonner";
 
 const EXAM_OPTIONS = [
   { value: "ielts", label: "IELTS" },
@@ -42,9 +44,12 @@ export default function SignupPage() {
         full_name: fullName,
         target_exam: targetExam || undefined,
       });
+      toast.success("Account created successfully.");
       navigate("/app");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Signup failed");
+      const message = getUserFacingErrorMessage(err, "Signup failed.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

@@ -28,13 +28,13 @@ import {
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { useOnboardingGate } from "./layout";
 import {
   generateTopics,
   type TopicGeneratorResult,
 } from "@/lib/ielts-api";
-
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
+import { toast } from "sonner";
 
 const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string }> = {
   listening: { icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },
@@ -143,9 +143,10 @@ function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
 export default function RoadmapPage() {
   const { user } = useAuth();
   const { requireOnboarding } = useOnboardingGate();
+  const roadmapStorageKey = user ? `roadmap_${user.id}` : null;
 
   const [phases, setPhases] = useState<Phase[]>(() => {
-    const saved = localStorage.getItem(`roadmap_${DEMO_USER_ID}`);
+    const saved = roadmapStorageKey ? localStorage.getItem(roadmapStorageKey) : null;
     if (saved) {
       try { return JSON.parse(saved); } catch { /* ignore */ }
     }
@@ -166,21 +167,38 @@ export default function RoadmapPage() {
 
   // Persist phases
   useEffect(() => {
+    if (!roadmapStorageKey) return;
     if (phases.length > 0) {
-      localStorage.setItem(`roadmap_${DEMO_USER_ID}`, JSON.stringify(phases));
+      localStorage.setItem(roadmapStorageKey, JSON.stringify(phases));
+      return;
     }
-  }, [phases]);
+    localStorage.removeItem(roadmapStorageKey);
+  }, [phases, roadmapStorageKey]);
+
+  useEffect(() => {
+    if (!roadmapStorageKey) return;
+    const saved = localStorage.getItem(roadmapStorageKey);
+    if (!saved) {
+      setPhases([]);
+      return;
+    }
+    try {
+      setPhases(JSON.parse(saved));
+    } catch {
+      setPhases([]);
+    }
+  }, [roadmapStorageKey]);
 
   const activePhase = phases.find((p) => p.status === "active");
   const completedCount = phases.filter((p) => p.status === "completed").length;
 
   async function handleGenerate() {
-    if (requireOnboarding()) return;
+    if (!user || requireOnboarding()) return;
 
     setGenerating(true);
     setError("");
     try {
-      const result = await generateTopics(DEMO_USER_ID, {
+      const result = await generateTopics(user.id, {
         target_score: user?.target_band_score ?? 7.0,
         current_level_description: user?.current_estimated_band
           ? `Currently at band ${user.current_estimated_band}`
@@ -202,8 +220,14 @@ export default function RoadmapPage() {
       };
 
       setPhases((prev) => [...prev, newPhase]);
+      toast.success("Roadmap phase generated.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate roadmap");
+      const message = getUserFacingErrorMessage(
+        e,
+        "Couldn't generate your roadmap. Please try again."
+      );
+      setError(message);
+      toast.error(message);
     } finally {
       setGenerating(false);
     }

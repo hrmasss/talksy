@@ -61,6 +61,8 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+*shm
+*wal
 
 # Logs
 *.log

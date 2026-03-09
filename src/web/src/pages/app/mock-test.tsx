@@ -23,9 +23,10 @@ import {
   type MockTestQuestion,
   type MockTestReport,
 } from "@/lib/ielts-api";
+import { useAuth } from "@/lib/auth";
+import { getUserFacingErrorMessage } from "@/lib/app-errors";
+import { toast } from "sonner";
 import { useOnboardingGate } from "./layout";
-
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 type Phase = "setup" | "test" | "report";
 
@@ -38,6 +39,7 @@ const sections = [
 ] as const;
 
 export default function MockTestPage() {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialSection = searchParams.get("section") || "";
   const { requireOnboarding } = useOnboardingGate();
@@ -50,18 +52,25 @@ export default function MockTestPage() {
   const [answer, setAnswer] = useState("");
 
   async function handleStart() {
-    if (requireOnboarding()) return;
+    if (!user || requireOnboarding()) return;
     setLoading(true);
     try {
-      const q = await startMockTest(DEMO_USER_ID, {
+      const q = await startMockTest(user.id, {
         test_type: selectedSection === "full" ? "full" : "section",
         section: selectedSection === "full" ? undefined : selectedSection,
       });
       setQuestion(q);
       setPhase("test");
       setAnswer("");
+      toast.success("Mock test started.");
     } catch (e) {
       console.error(e);
+      toast.error(
+        getUserFacingErrorMessage(
+          e,
+          "Couldn't start the mock test. Please try again."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -75,12 +84,20 @@ export default function MockTestPage() {
       if (result.status === "completed") {
         setReport(result as MockTestReport);
         setPhase("report");
+        toast.success("Mock test completed.");
       } else {
         setQuestion(result as MockTestQuestion);
         setAnswer("");
+        toast.success("Answer submitted.");
       }
     } catch (e) {
       console.error(e);
+      toast.error(
+        getUserFacingErrorMessage(
+          e,
+          "Couldn't submit your answer. Please try again."
+        )
+      );
     } finally {
       setLoading(false);
     }

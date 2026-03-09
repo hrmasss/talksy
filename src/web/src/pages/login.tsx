@@ -5,7 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
+import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { RiEyeLine, RiEyeOffLine, RiArrowRightLine } from "@remixicon/react";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -23,9 +25,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
+      toast.success("Signed in successfully.");
       navigate("/app");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const message = getUserFacingErrorMessage(err, "Login failed.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

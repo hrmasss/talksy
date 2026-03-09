@@ -1,6 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { RiHistoryLine, RiMicLine, RiBookLine } from "@remixicon/react";
+import { RiHistoryLine } from "@remixicon/react";
 
 export default function HistoryPage() {
   return (

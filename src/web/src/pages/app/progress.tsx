@@ -19,8 +19,7 @@ import {
   type ProgressOverview,
   type TestHistory,
 } from "@/lib/ielts-api";
-
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
+import { useAuth } from "@/lib/auth";
 
 const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string }> = {
   listening: { icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },
@@ -30,16 +29,20 @@ const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: s
 };
 
 export default function ProgressPage() {
+  const { user } = useAuth();
+  const userId = user?.id;
   const [progress, setProgress] = useState<ProgressOverview | null>(null);
   const [history, setHistory] = useState<TestHistory | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!userId) return;
+    const currentUserId = userId;
     async function load() {
       try {
         const [p, h] = await Promise.all([
-          getProgress(DEMO_USER_ID).catch(() => null),
-          getTestHistory(DEMO_USER_ID).catch(() => null),
+          getProgress(currentUserId).catch(() => null),
+          getTestHistory(currentUserId).catch(() => null),
         ]);
         setProgress(p);
         setHistory(h);
@@ -48,7 +51,7 @@ export default function ProgressPage() {
       }
     }
     load();
-  }, []);
+  }, [userId]);
 
   if (loading) {
     return (

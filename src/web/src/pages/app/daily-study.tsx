@@ -21,9 +21,9 @@ import {
   type DailyStudyPlan,
   type StudyActivity,
 } from "@/lib/ielts-api";
-import { useOnboardingGate } from "./layout";
-
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
+import { useAuth } from "@/lib/auth";
+import { getUserFacingErrorMessage } from "@/lib/app-errors";
+import { toast } from "sonner";
 
 const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string }> = {
   listening: { icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },
@@ -34,7 +34,8 @@ const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: s
 };
 
 export default function DailyStudyPage() {
-  const { requireOnboarding } = useOnboardingGate();
+  const { user } = useAuth();
+  const userId = user?.id;
   const [plan, setPlan] = useState<DailyStudyPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<StudyActivity | null>(null);
@@ -47,18 +48,26 @@ export default function DailyStudyPage() {
   } | null>(null);
 
   useEffect(() => {
+    if (!userId) return;
+    const currentUserId = userId;
     async function load() {
       try {
-        const p = await getDailyPlan(DEMO_USER_ID);
+        const p = await getDailyPlan(currentUserId);
         setPlan(p);
       } catch (e) {
         console.error(e);
+        toast.error(
+          getUserFacingErrorMessage(
+            e,
+            "Couldn't load your study plan. Please try again."
+          )
+        );
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [userId]);
 
   async function handleSubmitResponse() {
     if (!selectedActivity || !response.trim()) return;
@@ -70,6 +79,7 @@ export default function DailyStudyPage() {
         suggestions: result.suggestions,
         is_correct: result.is_correct,
       });
+      toast.success("Response submitted successfully.");
       // Mark completed locally
       if (plan) {
         setPlan({
@@ -82,6 +92,12 @@ export default function DailyStudyPage() {
       }
     } catch (e) {
       console.error(e);
+      toast.error(
+        getUserFacingErrorMessage(
+          e,
+          "Couldn't submit your response. Please try again."
+        )
+      );
     } finally {
       setSubmitting(false);
     }

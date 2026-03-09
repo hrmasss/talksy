@@ -23,8 +23,9 @@ import {
   type PlacementQuestion,
   type PlacementResult,
 } from "@/lib/ielts-api";
-
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
+import { useAuth } from "@/lib/auth";
+import { getUserFacingErrorMessage } from "@/lib/app-errors";
+import { toast } from "sonner";
 
 const sectionIcons: Record<string, typeof RiHeadphoneLine> = {
   listening: RiHeadphoneLine,
@@ -44,6 +45,7 @@ type Phase = "setup" | "test" | "result";
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Setup phase
   const [targetBand, setTargetBand] = useState(7.0);
@@ -57,16 +59,24 @@ export default function OnboardingPage() {
   const [result, setResult] = useState<PlacementResult | null>(null);
 
   const startTest = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const q = await startPlacementTest(DEMO_USER_ID, {
+      const q = await startPlacementTest(user.id, {
         target_band_score: targetBand,
         exam_date: examDate || undefined,
       });
       setQuestion(q);
       setPhase("test");
+      toast.success("Placement test started.");
     } catch (err) {
       console.error("Failed to start placement test:", err);
+      toast.error(
+        getUserFacingErrorMessage(
+          err,
+          "Couldn't start the placement test. Please try again."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -82,11 +92,19 @@ export default function OnboardingPage() {
       if (res.status === "completed") {
         setResult(res as PlacementResult);
         setPhase("result");
+        toast.success("Placement test completed successfully.");
       } else {
         setQuestion(res as PlacementQuestion);
+        toast.success("Answer submitted.");
       }
     } catch (err) {
       console.error("Failed to submit answer:", err);
+      toast.error(
+        getUserFacingErrorMessage(
+          err,
+          "Couldn't submit your answer. Please try again."
+        )
+      );
     } finally {
       setLoading(false);
     }

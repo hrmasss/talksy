@@ -18,9 +18,8 @@ import {
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { getProgress, getDailyPlan, type ProgressOverview, type DailyStudyPlan } from "@/lib/ielts-api";
+import { useAuth } from "@/lib/auth";
 import { useOnboardingGate } from "./layout";
-
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string }> = {
   listening: { icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },
@@ -31,18 +30,22 @@ const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: s
 };
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const { requireOnboarding } = useOnboardingGate();
   const navigate = useNavigate();
+  const userId = user?.id;
   const [progress, setProgress] = useState<ProgressOverview | null>(null);
   const [dailyPlan, setDailyPlan] = useState<DailyStudyPlan | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!userId) return;
+    const currentUserId = userId;
     async function load() {
       try {
         const [p, d] = await Promise.all([
-          getProgress(DEMO_USER_ID).catch(() => null),
-          getDailyPlan(DEMO_USER_ID).catch(() => null),
+          getProgress(currentUserId).catch(() => null),
+          getDailyPlan(currentUserId).catch(() => null),
         ]);
         setProgress(p);
         setDailyPlan(d);
@@ -51,7 +54,7 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, []);
+  }, [userId]);
 
   if (loading) {
     return (
