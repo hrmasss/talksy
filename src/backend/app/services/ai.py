@@ -2,10 +2,9 @@
 
 from typing import Any
 
-from app.config import settings
+from app.agents.common.llm import get_llm
 from app.core.logging import logger
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 
 class AIService:
@@ -15,14 +14,13 @@ class AIService:
         self._llm = None
 
     @property
-    def llm(self) -> ChatOpenAI:
+    def llm(self):
         """Get or create LLM instance."""
-        if self._llm is None and settings.openai_api_key:
-            self._llm = ChatOpenAI(
-                model=settings.openai_model,
-                api_key=settings.openai_api_key,
-                temperature=0.7,
-            )
+        if self._llm is None:
+            try:
+                self._llm = get_llm()
+            except ValueError:
+                pass
         return self._llm
 
     async def generate_response(self, prompt: str, system_prompt: str | None = None) -> str:

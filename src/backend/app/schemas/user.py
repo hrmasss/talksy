@@ -111,3 +111,21 @@ class PasswordChange(BaseSchema):
         if not any(c.isdigit() for c in v):
             raise ValueError("Password must contain at least one digit")
         return v
+
+
+# ── User Settings (API keys) ─────────────────────────────────
+
+class UserSettingsUpdate(BaseSchema):
+    """Schema for updating user settings (stored in preferences JSON)."""
+
+    gemini_api_keys: list[str] | None = Field(
+        default=None,
+        description="List of user-provided Gemini API keys",
+    )
+
+
+class UserSettingsResponse(BaseSchema):
+    """Schema for user settings response (masks keys)."""
+
+    gemini_api_keys: list[str] = Field(default_factory=list)
+    has_gemini_keys: bool = False

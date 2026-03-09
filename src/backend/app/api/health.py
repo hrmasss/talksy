@@ -45,10 +45,10 @@ class HealthController(Controller):
                 services["redis"] = {"status": "unhealthy", "error": str(e)}
 
         # Check AI service
-        if settings.openai_api_key:
-            services["ai"] = {"status": "healthy", "provider": "openai"}
+        if settings.gemini_api_keys:
+            services["ai"] = {"status": "healthy", "provider": "gemini"}
         else:
-            services["ai"] = {"status": "degraded", "message": "API key not configured"}
+            services["ai"] = {"status": "degraded", "message": "Gemini API key not configured"}
 
         # Determine overall status
         all_healthy = all(

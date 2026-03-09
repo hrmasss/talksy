@@ -46,6 +46,14 @@ def _parse_json_from_text(text: str) -> dict:
     return {}
 
 
+def _build_question_request(prompt: str) -> list[HumanMessage]:
+    """Build a non-empty message payload for Gemini question generation."""
+    cleaned_prompt = prompt.strip()
+    if not cleaned_prompt:
+        raise ValueError("Placement prompt must not be empty.")
+    return [HumanMessage(content=cleaned_prompt)]
+
+
 # ────────────────────────────────────────────────────────────────────
 # 1. Initialise
 # ────────────────────────────────────────────────────────────────────
@@ -82,17 +90,16 @@ async def generate_placement_question_node(state: PlacementState) -> dict:
     global_q = state.get("question_number", 0)
 
     prompt = _get_section_prompt(section, section_q, total_for_section)
+    request_messages = _build_question_request(prompt)
 
-    llm = get_llm(model=settings.llm_model, temperature=0.8)
+    llm = get_llm(model=settings.gemini_model, temperature=0.8)
 
     try:
         structured = llm.with_structured_output(PlacementQuestion)
-        q: PlacementQuestion = await structured.ainvoke(
-            [SystemMessage(content=prompt)]
-        )
+        q: PlacementQuestion = await structured.ainvoke(request_messages)
         q_data = q.model_dump()
     except Exception:
-        raw = await llm.ainvoke([SystemMessage(content=prompt)])
+        raw = await llm.ainvoke(request_messages)
         q_data = _parse_json_from_text(raw.content)
 
     # Build question text with scenario/passage if present
@@ -101,7 +108,7 @@ async def generate_placement_question_node(state: PlacementState) -> dict:
         question_text = f"[Listening Scenario]\n{q_data['scenario']}\n\n"
     if q_data.get("passage"):
         question_text = f"[Reading Passage]\n{q_data['passage']}\n\n"
-    question_text += q_data.get("question", "")
+    question_text += q_data.get("question") or q_data.get("prompt", "")
     if q_data.get("instructions"):
         question_text += f"\n\n{q_data['instructions']}"
 
@@ -186,7 +193,7 @@ async def evaluate_placement_node(state: PlacementState) -> dict:
         }
 
     prompt = get_placement_evaluation_prompt(responses)
-    llm = get_llm(model=settings.llm_model, temperature=0.2)
+    llm = get_llm(model=settings.gemini_model, temperature=0.2)
 
     try:
         structured = llm.with_structured_output(PlacementEvaluation)

@@ -41,25 +41,20 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # AI / LLM
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
-    openrouter_api_key: str = ""
-    openrouter_api_base: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = ""
-    llm_model: str = "openai/gpt-4.1-mini"
-    gemini_api_key: str = ""
+    # AI / LLM – Gemini
+    gemini_api_keys: str = ""  # comma-separated list of Gemini API keys
+    gemini_model: str = "gemini-2.5-flash"
     tavily_api_key: str = ""
     serper_api_key: str = ""
-    embedding_model: str = "text-embedding-3-small"
-    embedding_provider: Literal["openai", "google", "huggingface"] = "openai"
+    embedding_model: str = "models/text-embedding-004"
+    embedding_provider: Literal["google", "huggingface"] = "google"
     huggingface_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Qdrant – long-term memory vector store
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
     qdrant_collection_prefix: str = "talksy"
-    qdrant_embedding_dim: int = 1536  # auto-resolved per provider
+    qdrant_embedding_dim: int = 768  # auto-resolved per provider
 
     # AI Database (for LangGraph checkpointer)
     ai_db_uri: str = ""

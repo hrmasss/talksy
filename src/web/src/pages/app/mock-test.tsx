@@ -14,7 +14,9 @@ import {
   RiHeadphoneLine,
   RiLoader4Line,
   RiMicLine,
+  RiStopCircleLine,
   RiTimeLine,
+  RiVolumeUpLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import {
@@ -27,6 +29,8 @@ import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { toast } from "sonner";
 import { useOnboardingGate } from "./layout";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
+import { speechToText, textToSpeech } from "@/lib/speech-api";
 
 type Phase = "setup" | "test" | "report";
 
@@ -50,6 +54,53 @@ export default function MockTestPage() {
   const [question, setQuestion] = useState<MockTestQuestion | null>(null);
   const [report, setReport] = useState<MockTestReport | null>(null);
   const [answer, setAnswer] = useState("");
+  const [transcribing, setTranscribing] = useState(false);
+  const [ttsPlaying, setTtsPlaying] = useState(false);
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+
+  // ── TTS: read question aloud ─────────────────────────────────
+  const handlePlayQuestion = async () => {
+    if (!question?.question_text) return;
+    setTtsPlaying(true);
+    try {
+      const buf = await textToSpeech(question.question_text);
+      const blob = new Blob([buf], { type: "audio/wav" });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setTtsPlaying(false);
+      };
+      audio.play();
+    } catch {
+      toast.error("Could not play audio. Check API key in Settings.");
+      setTtsPlaying(false);
+    }
+  };
+
+  // ── STT: record voice answer ─────────────────────────────────
+  const handleToggleRecording = async () => {
+    if (isRecording) {
+      setTranscribing(true);
+      try {
+        const blob = await stopRecording();
+        if (blob.size > 0) {
+          const text = await speechToText(blob);
+          setAnswer((prev) => (prev ? prev + " " + text : text));
+        }
+      } catch {
+        toast.error("Could not transcribe audio. Check API key in Settings.");
+      } finally {
+        setTranscribing(false);
+      }
+    } else {
+      try {
+        await startRecording();
+      } catch {
+        toast.error("Microphone access denied.");
+      }
+    }
+  };
 
   async function handleStart() {
     if (!user || requireOnboarding()) return;
@@ -213,12 +264,52 @@ export default function MockTestPage() {
                 ))}
               </div>
             ) : (
-              <Textarea
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder="Type your answer here…"
-                className="min-h-30 resize-none"
-              />
+              <div className="space-y-2">
+                <Textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  placeholder={
+                    question.section === "speaking"
+                      ? "Click the mic to record your answer, or type it…"
+                      : "Type your answer here…"
+                  }
+                  className="min-h-30 resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  {/* Listen to question */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={handlePlayQuestion}
+                    disabled={ttsPlaying}
+                  >
+                    {ttsPlaying ? (
+                      <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RiVolumeUpLine className="h-3.5 w-3.5" />
+                    )}
+                    Listen
+                  </Button>
+                  {/* Record voice answer */}
+                  <Button
+                    variant={isRecording ? "destructive" : "outline"}
+                    size="sm"
+                    className={cn("gap-1.5", isRecording && "animate-pulse")}
+                    onClick={handleToggleRecording}
+                    disabled={transcribing}
+                  >
+                    {transcribing ? (
+                      <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+                    ) : isRecording ? (
+                      <RiStopCircleLine className="h-3.5 w-3.5" />
+                    ) : (
+                      <RiMicLine className="h-3.5 w-3.5" />
+                    )}
+                    {transcribing ? "Transcribing…" : isRecording ? "Stop" : "Record"}
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

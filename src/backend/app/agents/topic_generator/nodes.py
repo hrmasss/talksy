@@ -43,7 +43,7 @@ async def assess_level_node(state: TopicGeneratorState) -> dict:
     """Estimate the user's IELTS band from their self-description."""
     print("📊 Assessing user IELTS level …")
 
-    llm = get_llm(model=settings.llm_model, temperature=0.5)
+    llm = get_llm(model=settings.gemini_model, temperature=0.5)
     structured = llm.with_structured_output(LevelAssessment)
 
     ctx = _time_ctx()
@@ -103,7 +103,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
         **ctx,
     }
 
-    llm = get_llm(model=settings.llm_model, temperature=0.8)
+    llm = get_llm(model=settings.gemini_model, temperature=0.8)
 
     # Build section generators ------------------------------------------------
     tasks: dict[str, Any] = {}

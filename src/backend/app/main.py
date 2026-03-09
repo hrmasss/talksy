@@ -97,7 +97,7 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
     static_dir = Path(__file__).parent.parent.parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
     
-    # Create static file routers for user and admin UIs
+    # Create static file routers for user UI
     static_routers = []
     
     # User UI static files
@@ -107,17 +107,6 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
             create_static_files_router(
                 path="/app",
                 directories=[user_static_dir],
-                html_mode=True,
-            )
-        )
-    
-    # Admin UI static files
-    admin_static_dir = static_dir / "admin"
-    if admin_static_dir.exists():
-        static_routers.append(
-            create_static_files_router(
-                path="/admin",
-                directories=[admin_static_dir],
                 html_mode=True,
             )
         )

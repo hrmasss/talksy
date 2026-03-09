@@ -38,6 +38,27 @@ from ..agents.placement.graph import (
 from ..agents.placement.state import TOTAL_PLACEMENT_QUESTIONS
 
 
+def _normalize_skill_profile(value: Any) -> dict[str, list[str]]:
+    """Return a safe skill profile mapping from DB JSON or stringified JSON."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return {"strengths": [], "weaknesses": [], "focus_areas": []}
+
+    if not isinstance(value, dict):
+        return {"strengths": [], "weaknesses": [], "focus_areas": []}
+
+    normalized: dict[str, list[str]] = {}
+    for key in ("strengths", "weaknesses", "focus_areas"):
+        raw = value.get(key, [])
+        if isinstance(raw, list):
+            normalized[key] = [str(item) for item in raw if item is not None]
+        else:
+            normalized[key] = []
+    return normalized
+
+
 class IELTSService:
     """Manages the full IELTS preparation lifecycle."""
 
@@ -53,7 +74,7 @@ class IELTSService:
             "exam_date": str(user["exam_date"]) if user.get("exam_date") else None,
             "preferred_daily_practice_time": user.get("preferred_daily_practice_time"),
             "current_estimated_band": user.get("current_estimated_band"),
-            "skill_profile": user.get("skill_profile", {}),
+            "skill_profile": _normalize_skill_profile(user.get("skill_profile", {})),
             "section_scores": user.get("section_scores", {}),
             "onboarding_completed": user.get("onboarding_completed", False),
         }
@@ -268,7 +289,7 @@ class IELTSService:
         current_band = user.get("current_estimated_band") or 5.0
         target_band = user.get("target_band_score") or 7.0
         practice_time = user.get("preferred_daily_practice_time") or 30
-        skill_profile = user.get("skill_profile", {})
+        skill_profile = _normalize_skill_profile(user.get("skill_profile", {}))
         section_scores = user.get("section_scores", {})
 
         # Get recent test history
@@ -296,7 +317,7 @@ class IELTSService:
             practice_time_minutes=practice_time,
         )
 
-        llm = get_llm(model=settings.llm_model, temperature=0.7)
+        llm = get_llm(model=settings.gemini_model, temperature=0.7)
         raw = await llm.ainvoke([
             {"role": "system", "content": prompt},
         ])
@@ -360,7 +381,7 @@ class IELTSService:
             user_response=user_response,
         )
 
-        llm = get_llm(model=settings.llm_model, temperature=0.3)
+        llm = get_llm(model=settings.gemini_model, temperature=0.3)
         raw = await llm.ainvoke([{"role": "user", "content": prompt}])
 
         try:
@@ -470,7 +491,7 @@ class IELTSService:
             (StudyActivity.user == user_id) & (StudyActivity.is_completed == True)
         )
 
-        skill_profile = user.get("skill_profile", {})
+        skill_profile = _normalize_skill_profile(user.get("skill_profile", {}))
         section_scores = user.get("section_scores", {})
         exam_date = user.get("exam_date")
         days_until_exam = (exam_date - date.today()).days if exam_date else None

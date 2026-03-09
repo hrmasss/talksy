@@ -24,6 +24,7 @@ import {
   type PlacementResult,
 } from "@/lib/ielts-api";
 import { useAuth } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth-api";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { toast } from "sonner";
 
@@ -45,7 +46,7 @@ type Phase = "setup" | "test" | "result";
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
 
   // Setup phase
   const [targetBand, setTargetBand] = useState(7.0);
@@ -91,6 +92,8 @@ export default function OnboardingPage() {
 
       if (res.status === "completed") {
         setResult(res as PlacementResult);
+        const latestUser = await getCurrentUser();
+        setUser(latestUser);
         setPhase("result");
         toast.success("Placement test completed successfully.");
       } else {
@@ -261,7 +264,7 @@ export default function OnboardingPage() {
                         key={i}
                         variant={answer === opt ? "default" : "outline"}
                         className="w-full justify-start text-left"
-                        onClick={() => setAnswer(opt.charAt(0))}
+                        onClick={() => setAnswer(opt)}
                       >
                         {opt}
                       </Button>

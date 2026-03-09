@@ -4,6 +4,7 @@ from app.api.v1.conversations import ConversationController
 from app.api.v1.exams import ExamController
 from app.api.v1.ielts import IELTSController
 from app.api.v1.practice import PracticeController
+from app.api.v1.speech import SpeechController
 from app.api.v1.users import UserController
 from litestar import Router
 
@@ -15,6 +16,7 @@ api_v1_router = Router(
         ConversationController,
         PracticeController,
         IELTSController,
+        SpeechController,
     ],
     tags=["API v1"],
 )

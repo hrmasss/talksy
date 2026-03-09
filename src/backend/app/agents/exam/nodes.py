@@ -205,7 +205,7 @@ async def generate_question_node(state: ExamState) -> dict:
                 question_number=qn,
             )
 
-    llm = get_llm(model=settings.llm_model, temperature=0.8)
+    llm = get_llm(model=settings.gemini_model, temperature=0.8)
 
     # We keep full message history so the LLM avoids repeating topics
     messages = list(state.get("messages", []))
@@ -314,7 +314,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         target_band=target_band,
     )
 
-    llm = get_llm(model=settings.llm_model, temperature=0.3)
+    llm = get_llm(model=settings.gemini_model, temperature=0.3)
 
     try:
         structured = llm.with_structured_output(AnswerEvaluation)
@@ -376,7 +376,7 @@ async def final_evaluation_node(state: ExamState) -> dict:
         difficulty_level=difficulty,
     )
 
-    llm = get_llm(model=settings.llm_model, temperature=0.2)
+    llm = get_llm(model=settings.gemini_model, temperature=0.2)
 
     try:
         structured = llm.with_structured_output(FinalExamReport)

@@ -125,7 +125,6 @@ cd src/backend && python create_tables.py
 
 - `/` - Marketing/landing page
 - `/app` - User application (voice chat, practice)
-- `/admin` - Admin dashboard
 
 ## License
 

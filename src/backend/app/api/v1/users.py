@@ -1,5 +1,6 @@
 """User API endpoints."""
 
+import json
 from uuid import UUID
 
 from app.core.auth import (
@@ -11,17 +12,37 @@ from app.core.auth import (
     get_user_id_from_token,
     require_auth,
 )
+from app.db.tables import User
 from app.schemas.user import (
     AuthResponse,
     TokenResponse,
     UserCreate,
     UserLogin,
     UserResponse,
+    UserSettingsResponse,
+    UserSettingsUpdate,
     UserUpdate,
 )
 from app.services.user import user_service
 from litestar import Controller, Request, get, post, put
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
+
+
+def _mask_key(key: str) -> str:
+    """Mask an API key for safe display: show first 4 and last 4 chars."""
+    if len(key) <= 10:
+        return key[:2] + "***" + key[-2:]
+    return key[:4] + "***" + key[-4:]
+
+
+def _normalize_skill_profile(value: object) -> dict:
+    """Return a safe dict for user responses."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _user_to_response(user: dict) -> UserResponse:
@@ -44,7 +65,7 @@ def _user_to_response(user: dict) -> UserResponse:
         exam_date=user.get("exam_date"),
         preferred_daily_practice_time=user.get("preferred_daily_practice_time"),
         current_estimated_band=user.get("current_estimated_band"),
-        skill_profile=user.get("skill_profile") or {},
+        skill_profile=_normalize_skill_profile(user.get("skill_profile")),
         section_scores=user.get("section_scores") or {},
         onboarding_completed=user.get("onboarding_completed", False),
     )
@@ -190,3 +211,61 @@ class UserController(Controller):
     async def get_user_stats(self, user_id: UUID) -> dict:
         """Get user statistics."""
         return await user_service.get_user_stats(user_id)
+
+    # ── User Settings (API keys) ─────────────────────────────
+
+    @get(
+        "/me/settings",
+        summary="Get User Settings",
+        description="Get the current user's settings including masked API keys.",
+        status_code=HTTP_200_OK,
+        guards=[require_auth],
+    )
+    async def get_settings(self, request: Request) -> UserSettingsResponse:
+        """Return user settings with masked API keys."""
+        user_id: UUID = request.state.user_id
+        user = await user_service.get_by_id(user_id)
+        if not user:
+            from app.core.exceptions import NotFoundException
+            raise NotFoundException(detail="User not found")
+
+        prefs = user.get("preferences") or {}
+        raw_keys: list[str] = prefs.get("gemini_api_keys", [])
+        masked = [_mask_key(k) for k in raw_keys]
+
+        return UserSettingsResponse(
+            gemini_api_keys=masked,
+            has_gemini_keys=len(raw_keys) > 0,
+        )
+
+    @put(
+        "/me/settings",
+        summary="Update User Settings",
+        description="Update API keys and other settings.",
+        status_code=HTTP_200_OK,
+        guards=[require_auth],
+    )
+    async def update_settings(
+        self, request: Request, data: UserSettingsUpdate
+    ) -> UserSettingsResponse:
+        """Save user-level API keys into the preferences JSON column."""
+        user_id: UUID = request.state.user_id
+        user = await user_service.get_by_id(user_id)
+        if not user:
+            from app.core.exceptions import NotFoundException
+            raise NotFoundException(detail="User not found")
+
+        prefs = dict(user.get("preferences") or {})
+
+        if data.gemini_api_keys is not None:
+            # Filter out empty strings
+            clean_keys = [k.strip() for k in data.gemini_api_keys if k.strip()]
+            prefs["gemini_api_keys"] = clean_keys
+
+        await User.update({"preferences": prefs}).where(User.id == user_id)
+
+        masked = [_mask_key(k) for k in prefs.get("gemini_api_keys", [])]
+        return UserSettingsResponse(
+            gemini_api_keys=masked,
+            has_gemini_keys=len(masked) > 0,
+        )

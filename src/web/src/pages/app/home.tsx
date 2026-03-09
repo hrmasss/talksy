@@ -10,8 +10,12 @@ import {
   RiBookOpenLine,
   RiQuestionLine,
   RiVoiceprintLine,
+  RiLoader4Line,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
+import { speechToText } from "@/lib/speech-api";
+import { toast } from "sonner";
 
 const practiceTypes = [
   {
@@ -36,8 +40,9 @@ const practiceTypes = [
 
 export default function AppHome() {
   const [message, setMessage] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
   const [selectedType, setSelectedType] = useState("speaking");
+  const [transcribing, setTranscribing] = useState(false);
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
   const handleSend = () => {
     if (!message.trim()) return;
@@ -45,9 +50,27 @@ export default function AppHome() {
     setMessage("");
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-    // TODO: Start/stop voice recording
+  const toggleRecording = async () => {
+    if (isRecording) {
+      setTranscribing(true);
+      try {
+        const blob = await stopRecording();
+        if (blob.size > 0) {
+          const text = await speechToText(blob);
+          setMessage((prev) => (prev ? prev + " " + text : text));
+        }
+      } catch (e) {
+        toast.error("Could not transcribe audio. Check your API key in Settings.");
+      } finally {
+        setTranscribing(false);
+      }
+    } else {
+      try {
+        await startRecording();
+      } catch {
+        toast.error("Microphone access denied.");
+      }
+    }
   };
 
   return (
@@ -144,8 +167,11 @@ export default function AppHome() {
             isRecording && "animate-pulse"
           )}
           onClick={toggleRecording}
+          disabled={transcribing}
         >
-          {isRecording ? (
+          {transcribing ? (
+            <RiLoader4Line className="h-5 w-5 animate-spin" />
+          ) : isRecording ? (
             <RiStopCircleLine className="h-5 w-5" />
           ) : (
             <RiMicLine className="h-5 w-5" />

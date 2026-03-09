@@ -23,6 +23,7 @@ else:
 APP_REGISTRY = AppRegistry(
     apps=[
         "app.db.piccolo_app",
+        "piccolo.apps.user.piccolo_app",
         "piccolo.apps.migrations.piccolo_app",
     ]
 )

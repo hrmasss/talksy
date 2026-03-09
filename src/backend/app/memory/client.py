@@ -1,8 +1,8 @@
 """Qdrant client and multi-provider embeddings factory.
 
-Supports **OpenAI**, **Google Generative AI**, and **HuggingFace**
-embeddings.  The active provider is chosen via ``EMBEDDING_PROVIDER``
-in settings (``openai`` | ``google`` | ``huggingface``).
+Supports **Google Generative AI** and **HuggingFace** embeddings.
+The active provider is chosen via ``EMBEDDING_PROVIDER``
+in settings (``google`` | ``huggingface``).
 """
 
 from __future__ import annotations
@@ -42,34 +42,17 @@ def get_embedding_dim() -> int:
 def get_embeddings() -> Embeddings:
     """Return a cached embeddings instance based on ``EMBEDDING_PROVIDER``.
 
-    * ``openai``      - uses ``langchain_openai.OpenAIEmbeddings``
     * ``google``      - uses ``langchain_google_genai.GoogleGenerativeAIEmbeddings``
     * ``huggingface`` - uses ``langchain_huggingface.HuggingFaceEmbeddings`` (local)
     """
     provider = settings.embedding_provider
 
-    if provider == "openai":
-        from langchain_openai import OpenAIEmbeddings
-
-        api_key = settings.openai_api_key or settings.openrouter_api_key
-        if not api_key:
-            raise ValueError(
-                "OPENAI_API_KEY (or OPENROUTER_API_KEY) must be set "
-                "when embedding_provider='openai'."
-            )
-        return OpenAIEmbeddings(
-            model=settings.embedding_model,
-            openai_api_key=api_key,
-        )
-
     if provider == "google":
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-        api_key = settings.gemini_api_key
-        if not api_key:
-            raise ValueError(
-                "GEMINI_API_KEY must be set when embedding_provider='google'."
-            )
+        from app.agents.common.llm import next_api_key
+
+        api_key = next_api_key()
         return GoogleGenerativeAIEmbeddings(
             model=settings.embedding_model,
             google_api_key=api_key,
