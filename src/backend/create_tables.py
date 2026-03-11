@@ -2,43 +2,16 @@
 
 import asyncio
 
-from app.db.tables import (
-    Answer,
-    ConversationMessage,
-    ConversationSession,
-    DailyStudyPlan,
-    Exam,
-    ExamAttempt,
-    PlacementResponse,
-    PlacementTest,
-    ProgressSnapshot,
-    Question,
-    StudyActivity,
-    User,
-)
+from app.db.bootstrap import TABLES, ensure_tables_exist
 
 
 async def create_tables():
     """Create all database tables."""
-    tables = [
-        User,
-        Exam,
-        Question,
-        ExamAttempt,
-        Answer,
-        ConversationSession,
-        ConversationMessage,
-        PlacementTest,
-        PlacementResponse,
-        DailyStudyPlan,
-        StudyActivity,
-        ProgressSnapshot,
-    ]
-    
-    for table in tables:
-        await table.create_table(if_not_exists=True)
+    await ensure_tables_exist()
+
+    for table in TABLES:
         print(f"Created table: {table._meta.tablename}")
-    
+
     print("\nAll tables created successfully!")
 
 

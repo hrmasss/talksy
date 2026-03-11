@@ -8,6 +8,7 @@ from app.api.v1 import api_v1_router
 from app.config import settings
 from app.core.exception_handlers import internal_error_handler, validation_exception_handler
 from app.core.logging import logger, setup_logging
+from app.db.bootstrap import ensure_tables_exist
 from litestar import Litestar, get
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
@@ -110,6 +111,17 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
                 html_mode=True,
             )
         )
+
+    # Audio cache (TTS question audio)
+    audio_static_dir = static_dir / "audio"
+    audio_static_dir.mkdir(parents=True, exist_ok=True)
+    static_routers.append(
+        create_static_files_router(
+            path="/static/audio",
+            directories=[audio_static_dir],
+            html_mode=False,
+        )
+    )
     
     # Create app
     app = Litestar(
@@ -176,6 +188,7 @@ async def on_startup() -> None:
         if engine:
             await engine.start_connection_pool()
             logger.info("Database connection pool started")
+            await ensure_tables_exist()
     except Exception as e:
         logger.warning(f"Could not start database connection pool: {e}")
 

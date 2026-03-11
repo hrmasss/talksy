@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,8 +12,10 @@ import {
   RiEdit2Line,
   RiFlashlightLine,
   RiHeadphoneLine,
+  RiHistoryLine,
   RiLoader4Line,
   RiMicLine,
+  RiPlayLine,
   RiStopCircleLine,
   RiTimeLine,
   RiVolumeUpLine,
@@ -22,8 +24,12 @@ import { cn } from "@/lib/utils";
 import {
   startMockTest,
   submitMockAnswer,
+  getActiveMockTest,
+  listMockTestSessions,
+  resumeMockTest,
   type MockTestQuestion,
   type MockTestReport,
+  type MockExamSession,
 } from "@/lib/ielts-api";
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
@@ -32,7 +38,7 @@ import { useOnboardingGate } from "./layout";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { speechToText, textToSpeech } from "@/lib/speech-api";
 
-type Phase = "setup" | "test" | "report";
+type Phase = "setup" | "test" | "report" | "history";
 
 const sections = [
   { key: "listening", label: "Listening", icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },
@@ -42,13 +48,16 @@ const sections = [
   { key: "full", label: "Full Test", icon: RiFlashlightLine, color: "text-primary", bg: "bg-primary/10" },
 ] as const;
 
+/** Sections where question audio should auto-play */
+const AUDIO_SECTIONS = new Set(["listening", "speaking"]);
+
 export default function MockTestPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialSection = searchParams.get("section") || "";
   const { requireOnboarding } = useOnboardingGate();
 
-  const [phase, setPhase] = useState<Phase>(initialSection ? "setup" : "setup");
+  const [phase, setPhase] = useState<Phase>("setup");
   const [selectedSection, setSelectedSection] = useState(initialSection);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState<MockTestQuestion | null>(null);
@@ -56,25 +65,104 @@ export default function MockTestPage() {
   const [answer, setAnswer] = useState("");
   const [transcribing, setTranscribing] = useState(false);
   const [ttsPlaying, setTtsPlaying] = useState(false);
+
+  // Session management
+  const [activeSession, setActiveSession] = useState<MockExamSession | null>(null);
+  const [sessions, setSessions] = useState<MockExamSession[]>([]);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  // Audio cache for replay
+  const questionAudioRef = useRef<HTMLAudioElement | null>(null);
+  const questionAudioUrlRef = useRef<string | null>(null);
+
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
-  // ── TTS: read question aloud ─────────────────────────────────
-  const handlePlayQuestion = async () => {
-    if (!question?.question_text) return;
-    setTtsPlaying(true);
-    try {
-      const buf = await textToSpeech(question.question_text);
-      const blob = new Blob([buf], { type: "audio/wav" });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
+  // ── Check for active / past sessions on mount ────────────
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [active, history] = await Promise.all([
+          getActiveMockTest(user.id).catch(() => null),
+          listMockTestSessions(user.id, { limit: 10 }).catch(() => ({ items: [] })),
+        ]);
+        if (cancelled) return;
+        setActiveSession(active ?? null);
+        setSessions(history.items);
+      } finally {
+        if (!cancelled) setCheckingSession(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // ── Generate / fetch audio for question (listening & speaking) ──
+  const playQuestionAudio = useCallback(
+    async (q: MockTestQuestion) => {
+      if (!AUDIO_SECTIONS.has(q.section) || !q.question_text) return;
+
+      setTtsPlaying(true);
+      try {
+        let audioUrl: string;
+
+        // Prefer server-cached audio if URL provided
+        if (q.audio_url) {
+          audioUrl = q.audio_url;
+        } else {
+          // Fall back to generating via TTS endpoint
+          const buf = await textToSpeech(q.question_text);
+          const blob = new Blob([buf], { type: "audio/wav" });
+          audioUrl = URL.createObjectURL(blob);
+        }
+
+        // Clean up previous audio
+        if (questionAudioRef.current) {
+          questionAudioRef.current.pause();
+          questionAudioRef.current = null;
+        }
+        if (questionAudioUrlRef.current?.startsWith("blob:")) {
+          URL.revokeObjectURL(questionAudioUrlRef.current);
+        }
+
+        questionAudioUrlRef.current = audioUrl;
+        const audio = new Audio(audioUrl);
+        questionAudioRef.current = audio;
+        audio.onended = () => setTtsPlaying(false);
+        audio.onerror = () => setTtsPlaying(false);
+        audio.play();
+      } catch {
+        toast.error("Could not play audio. Check API key in Settings.");
         setTtsPlaying(false);
-      };
-      audio.play();
-    } catch {
-      toast.error("Could not play audio. Check API key in Settings.");
-      setTtsPlaying(false);
+      }
+    },
+    []
+  );
+
+  // Auto-play audio whenever question changes (listening/speaking)
+  useEffect(() => {
+    if (phase === "test" && question && AUDIO_SECTIONS.has(question.section)) {
+      playQuestionAudio(question);
+    }
+    // Cleanup on unmount
+    return () => {
+      if (questionAudioRef.current) {
+        questionAudioRef.current.pause();
+        questionAudioRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question?.question_index, phase]);
+
+  const handleReplayAudio = () => {
+    if (questionAudioRef.current) {
+      setTtsPlaying(true);
+      questionAudioRef.current.currentTime = 0;
+      questionAudioRef.current.play();
+    } else if (question) {
+      playQuestionAudio(question);
     }
   };
 
@@ -102,6 +190,7 @@ export default function MockTestPage() {
     }
   };
 
+  // ── Start a new exam ───────────────────────────────────
   async function handleStart() {
     if (!user || requireOnboarding()) return;
     setLoading(true);
@@ -113,6 +202,7 @@ export default function MockTestPage() {
       setQuestion(q);
       setPhase("test");
       setAnswer("");
+      setActiveSession(null);
       toast.success("Mock test started.");
     } catch (e) {
       console.error(e);
@@ -127,6 +217,32 @@ export default function MockTestPage() {
     }
   }
 
+  // ── Resume an in-progress exam ─────────────────────────
+  async function handleResume(threadId: string) {
+    setLoading(true);
+    try {
+      const result = await resumeMockTest(threadId);
+      if (result.status === "completed") {
+        setReport(result as MockTestReport);
+        setPhase("report");
+      } else {
+        setQuestion(result as MockTestQuestion);
+        setPhase("test");
+        setAnswer("");
+      }
+      setActiveSession(null);
+      toast.success("Resumed your mock test.");
+    } catch (e) {
+      console.error(e);
+      toast.error(
+        getUserFacingErrorMessage(e, "Couldn't resume the test. It may have expired.")
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Submit answer ──────────────────────────────────────
   async function handleSubmit() {
     if (!question || !answer.trim()) return;
     setLoading(true);
@@ -154,14 +270,148 @@ export default function MockTestPage() {
     }
   }
 
+  // ── Loading state on first mount ──────────────────────
+  if (checkingSession) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RiLoader4Line className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // ── History Phase ─────────────────────────────────────────────
+  if (phase === "history") {
+    return (
+      <div className="mx-auto max-w-2xl px-6 py-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Exam History</h1>
+          <Button variant="outline" size="sm" onClick={() => setPhase("setup")}>
+            <RiArrowLeftLine className="mr-1.5 h-4 w-4" /> Back
+          </Button>
+        </div>
+
+        {sessions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No exam history yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {sessions.map((s) => (
+              <Card
+                key={s.thread_id}
+                className={cn(
+                  "cursor-pointer transition-all hover:border-primary/40",
+                  s.status === "in_progress" && "border-amber-400/60"
+                )}
+                onClick={() => {
+                  if (s.status === "in_progress") {
+                    handleResume(s.thread_id);
+                  } else if (s.status === "completed" && s.band_score != null) {
+                    // Show report for completed sessions
+                    setReport({
+                      thread_id: s.thread_id,
+                      status: "completed",
+                      section: s.section,
+                      overall_band: s.band_score,
+                      section_scores: s.section_scores,
+                      evaluations: [],
+                      strengths: s.strengths,
+                      weaknesses: s.weaknesses,
+                      recommendations: s.recommendations,
+                      final_report_markdown: s.report_markdown,
+                    });
+                    setPhase("report");
+                  }
+                }}
+              >
+                <CardContent className="flex items-center justify-between py-4">
+                  <div className="flex items-center gap-3">
+                    <Badge
+                      variant={s.status === "in_progress" ? "default" : "secondary"}
+                      className="capitalize"
+                    >
+                      {s.section}
+                    </Badge>
+                    <div>
+                      <div className="text-sm font-medium capitalize">{s.status.replace("_", " ")}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {s.started_at
+                          ? new Date(s.started_at).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : ""}
+                        {" · "}Q{s.question_index}/{s.total_questions}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {s.band_score != null ? (
+                      <span className="text-lg font-bold text-primary">{s.band_score}</span>
+                    ) : s.status === "in_progress" ? (
+                      <Badge variant="outline" className="text-amber-600">Resume</Badge>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Setup Phase ───────────────────────────────────────────────
   if (phase === "setup") {
     return (
       <div className="mx-auto max-w-2xl px-6 py-8">
-        <h1 className="mb-2 text-2xl font-bold tracking-tight">Mock Test</h1>
+        <div className="mb-2 flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Mock Test</h1>
+          {sessions.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground"
+              onClick={() => setPhase("history")}
+            >
+              <RiHistoryLine className="h-4 w-4" />
+              History
+            </Button>
+          )}
+        </div>
         <p className="mb-6 text-sm text-muted-foreground">
           Choose a section to practice or take a full test.
         </p>
+
+        {/* Resume Banner */}
+        {activeSession && (
+          <Card className="mb-4 border-amber-400/60 bg-amber-500/5">
+            <CardContent className="flex items-center justify-between py-4">
+              <div>
+                <div className="text-sm font-medium">
+                  You have an in-progress <span className="capitalize">{activeSession.section}</span> test
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Q{activeSession.question_index}/{activeSession.total_questions}
+                  {activeSession.started_at &&
+                    ` · Started ${new Date(activeSession.started_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => handleResume(activeSession.thread_id)}
+                disabled={loading}
+              >
+                {loading ? (
+                  <RiLoader4Line className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RiPlayLine className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Resume
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           {sections.map((s) => (
@@ -208,6 +458,7 @@ export default function MockTestPage() {
   // ── Test Phase ────────────────────────────────────────────────
   if (phase === "test" && question) {
     const pct = ((question.question_index + 1) / question.total_questions) * 100;
+    const isAudioSection = AUDIO_SECTIONS.has(question.section);
 
     return (
       <div className="mx-auto max-w-2xl px-6 py-8">
@@ -243,6 +494,26 @@ export default function MockTestPage() {
           <CardContent className="pt-6">
             <p className="mb-4 text-sm leading-relaxed">{question.question_text}</p>
 
+            {/* Replay / Listen button for audio sections */}
+            {isAudioSection && (
+              <div className="mb-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleReplayAudio}
+                  disabled={ttsPlaying}
+                >
+                  {ttsPlaying ? (
+                    <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RiVolumeUpLine className="h-3.5 w-3.5" />
+                  )}
+                  {ttsPlaying ? "Playing…" : "Replay Question"}
+                </Button>
+              </div>
+            )}
+
             {question.options && question.options.length > 0 ? (
               <div className="space-y-2">
                 {question.options.map((opt, i) => (
@@ -276,21 +547,23 @@ export default function MockTestPage() {
                   className="min-h-30 resize-none"
                 />
                 <div className="flex items-center gap-2">
-                  {/* Listen to question */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={handlePlayQuestion}
-                    disabled={ttsPlaying}
-                  >
-                    {ttsPlaying ? (
-                      <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RiVolumeUpLine className="h-3.5 w-3.5" />
-                    )}
-                    Listen
-                  </Button>
+                  {/* Listen to question (non-audio sections) */}
+                  {!isAudioSection && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => question && playQuestionAudio(question)}
+                      disabled={ttsPlaying}
+                    >
+                      {ttsPlaying ? (
+                        <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RiVolumeUpLine className="h-3.5 w-3.5" />
+                      )}
+                      Listen
+                    </Button>
+                  )}
                   {/* Record voice answer */}
                   <Button
                     variant={isRecording ? "destructive" : "outline"}
@@ -447,6 +720,12 @@ export default function MockTestPage() {
               setReport(null);
               setQuestion(null);
               setAnswer("");
+              // Refresh session list
+              if (user) {
+                listMockTestSessions(user.id, { limit: 10 })
+                  .then((r) => setSessions(r.items))
+                  .catch(() => {});
+              }
             }}
           >
             <RiArrowLeftLine className="mr-2 h-4 w-4" />

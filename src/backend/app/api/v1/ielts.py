@@ -11,6 +11,8 @@ from app.schemas.ielts import (
     DailyStudyHistoryResponse,
     IELTSProfileResponse,
     IELTSProfileUpdate,
+    MockExamSessionListResponse,
+    MockExamSessionResponse,
     MockTestAnswerRequest,
     MockTestQuestionResponse,
     MockTestReportResponse,
@@ -29,6 +31,29 @@ from app.services.ielts import ielts_service
 from litestar import Controller, get, post, put
 from litestar.exceptions import NotFoundException
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
+
+
+def _normalize_mock_question_text(question: object) -> str:
+    """Coerce nullable question payloads to a clean display string."""
+    if isinstance(question, dict):
+        value = question.get("text")
+    else:
+        value = question
+
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+    return "" if text.lower() == "none" else text
+
+
+def _normalize_mock_question_type(question: object) -> str:
+    """Extract the question type from a mock-test payload."""
+    if isinstance(question, dict):
+        value = question.get("type")
+        if isinstance(value, str) and value.strip():
+            return value
+    return "discussion"
 
 
 class IELTSController(Controller):
@@ -165,13 +190,10 @@ class IELTSController(Controller):
             current_part=result.get("current_part", 1),
             question_index=result.get("question_index", 0),
             total_questions=result.get("total_questions", 0),
-            question_text=result.get("current_question", {}).get("text", "")
-                if isinstance(result.get("current_question"), dict)
-                else str(result.get("current_question", "")),
-            question_type=result.get("current_question", {}).get("type", "discussion")
-                if isinstance(result.get("current_question"), dict)
-                else "discussion",
+            question_text=_normalize_mock_question_text(result.get("current_question")),
+            question_type=_normalize_mock_question_type(result.get("current_question")),
             options=[],
+            audio_url=result.get("audio_url"),
         )
 
     @post(
@@ -211,13 +233,88 @@ class IELTSController(Controller):
             current_part=result.get("current_part", 1),
             question_index=result.get("question_index", 0),
             total_questions=result.get("total_questions", 0),
-            question_text=result.get("current_question", {}).get("text", "")
-                if isinstance(result.get("current_question"), dict)
-                else str(result.get("current_question", "")),
-            question_type=result.get("current_question", {}).get("type", "discussion")
-                if isinstance(result.get("current_question"), dict)
-                else "discussion",
+            question_text=_normalize_mock_question_text(result.get("current_question")),
+            question_type=_normalize_mock_question_type(result.get("current_question")),
             options=[],
+            audio_url=result.get("audio_url"),
+        )
+
+    # ── Mock Exam Sessions ────────────────────────────────────
+
+    @get(
+        "/mock-test/sessions/{user_id:uuid}",
+        summary="List Mock Test Sessions",
+        description="Get all mock test sessions for a user (active and completed).",
+        status_code=HTTP_200_OK,
+    )
+    async def list_sessions(
+        self, user_id: UUID, status: str | None = None, limit: int = 20, offset: int = 0
+    ) -> MockExamSessionListResponse:
+        from app.agents.services.exam_service import exam_service
+
+        sessions = await exam_service.list_sessions(
+            str(user_id), status=status, limit=limit, offset=offset
+        )
+        return MockExamSessionListResponse(
+            items=[MockExamSessionResponse(**s) for s in sessions]
+        )
+
+    @get(
+        "/mock-test/active/{user_id:uuid}",
+        summary="Get Active Mock Test",
+        description="Get the user's currently in-progress mock test, if any.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_active_session(self, user_id: UUID) -> MockExamSessionResponse | None:
+        from app.agents.services.exam_service import exam_service
+
+        active = await exam_service.get_active_session(str(user_id))
+        if not active:
+            return None
+        return MockExamSessionResponse(
+            status="in_progress",
+            difficulty=active.get("difficulty", "intermediate"),
+            **{k: v for k, v in active.items() if k != "difficulty"},
+        )
+
+    @get(
+        "/mock-test/resume",
+        summary="Resume Mock Test",
+        description="Get current state to resume an in-progress mock test.",
+        status_code=HTTP_200_OK,
+    )
+    async def resume_mock_test(self, thread_id: str) -> MockTestQuestionResponse | MockTestReportResponse:
+        from app.agents.services.exam_service import exam_service
+
+        result = await exam_service.get_session_state(thread_id=thread_id)
+        if result.get("error"):
+            raise NotFoundException(detail="Mock test session not found")
+
+        if result.get("status") == "completed":
+            return MockTestReportResponse(
+                thread_id=thread_id,
+                status="completed",
+                section=result.get("section"),
+                overall_band=result.get("overall_band"),
+                section_scores=result.get("section_scores", []),
+                evaluations=result.get("evaluations", []),
+                strengths=result.get("strengths", []),
+                weaknesses=result.get("weaknesses", []),
+                recommendations=result.get("recommendations", []),
+                final_report_markdown=result.get("final_report_markdown"),
+            )
+
+        return MockTestQuestionResponse(
+            thread_id=thread_id,
+            status=result.get("status", "awaiting_answer"),
+            section=result.get("section", ""),
+            current_part=result.get("current_part", 1),
+            question_index=result.get("question_index", 0),
+            total_questions=result.get("total_questions", 0),
+            question_text=_normalize_mock_question_text(result.get("current_question")),
+            question_type=_normalize_mock_question_type(result.get("current_question")),
+            options=[],
+            audio_url=result.get("audio_url"),
         )
 
     # ── Daily Study ───────────────────────────────────────────

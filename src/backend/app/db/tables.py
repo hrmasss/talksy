@@ -286,3 +286,30 @@ class ProgressSnapshot(Table):
     weaknesses = JSON(default=[])
     ai_recommendations = JSON(default=[])
     created_at = Timestamp(default=TimestampNow())
+
+
+# ──────────────────────────────────────────────────────────────────
+# AI Mock Exam Sessions (LangGraph-backed)
+# ──────────────────────────────────────────────────────────────────
+
+class MockExamSession(Table):
+    """Tracks AI-powered mock exam sessions for resume & history."""
+
+    id = UUID(primary_key=True)
+    user = ForeignKey(references=User)
+    thread_id = Varchar(length=255, unique=True, index=True)
+    section = Varchar(length=50, index=True)  # listening, reading, writing, speaking
+    difficulty = Varchar(length=50, default="intermediate")
+    target_band = Varchar(length=20, null=True)
+    status = Varchar(length=50, default="in_progress")  # in_progress, completed, abandoned
+    question_index = Integer(default=0)
+    total_questions = Integer(default=0)
+    band_score = Float(null=True)
+    section_scores = JSON(default=[])
+    strengths = JSON(default=[])
+    weaknesses = JSON(default=[])
+    recommendations = JSON(default=[])
+    report_markdown = Text(null=True)
+    started_at = Timestamp(default=TimestampNow())
+    completed_at = Timestamp(null=True)
+    updated_at = Timestamp(default=TimestampNow(), auto_update=datetime.now)

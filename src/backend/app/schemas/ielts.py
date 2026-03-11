@@ -114,6 +114,7 @@ class MockTestQuestionResponse(BaseSchema):
     options: list[str] = []
     passage: str | None = None
     time_limit_seconds: int | None = None
+    audio_url: str | None = None
 
 
 class MockTestAnswerRequest(BaseSchema):
@@ -136,6 +137,33 @@ class MockTestReportResponse(BaseSchema):
     weaknesses: list[str] = []
     recommendations: list[str] = []
     final_report_markdown: str | None = None
+
+
+# ── Mock Exam Sessions ────────────────────────────────────────────────
+
+class MockExamSessionResponse(BaseSchema):
+    """A single mock-exam session summary."""
+
+    thread_id: str
+    section: str
+    difficulty: str
+    status: str
+    question_index: int = 0
+    total_questions: int = 0
+    band_score: float | None = None
+    section_scores: JsonList = []
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+    recommendations: list[str] = []
+    report_markdown: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
+class MockExamSessionListResponse(BaseSchema):
+    """List of mock-exam sessions for a user."""
+
+    items: list[MockExamSessionResponse] = []
 
 
 # ── Daily Study ───────────────────────────────────────────────────

@@ -41,6 +41,7 @@ dependencies = [
     "sentence-transformers>=5.2.3",
     "pyjwt>=2.11.0",
     "google-genai>=1.0.0",
+    "granian[reload,uvloop]>=2.7.2",
 ]
 
 [project.optional-dependencies]

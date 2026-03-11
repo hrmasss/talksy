@@ -92,11 +92,14 @@ def main():
                 return 1
         else:
             backend_cmd = [
-                sys.executable, "-m", "uvicorn",
-                "app.main:app",
+                sys.executable, "-m", "granian",
+                "app.main:app",               
+                "--interface", "asgi",        
                 "--host", "0.0.0.0",
                 "--port", api_port,
-                "--reload",
+                "--loop", "auto" if sys.platform == "win32" else "uvloop",           
+                "--reload",                   
+                # "--log-level", "info",      
             ]
             backend_proc = subprocess.Popen(
                 backend_cmd,
