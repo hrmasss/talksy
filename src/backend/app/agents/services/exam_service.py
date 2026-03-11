@@ -139,12 +139,19 @@ class ExamService:
     async def get_active_session(user_id: str) -> dict[str, Any] | None:
         """Return the most recent in-progress session for a user, if any."""
         rows = await (
-            MockExamSession.select()
+            MockExamSession.select(
+                MockExamSession.thread_id,
+                MockExamSession.section,
+                MockExamSession.difficulty,
+                MockExamSession.question_index,
+                MockExamSession.total_questions,
+                MockExamSession.started_at,
+            )
             .where(MockExamSession.user == user_id)
             .where(MockExamSession.status == "in_progress")
             .order_by(MockExamSession.started_at, ascending=False)
             .limit(1)
-            .output(as_list=True)
+            .output()
         )
         if not rows:
             return None
@@ -167,7 +174,22 @@ class ExamService:
     ) -> list[dict[str, Any]]:
         """Return a page of mock-exam sessions for a user."""
         q = (
-            MockExamSession.select()
+            MockExamSession.select(
+                MockExamSession.thread_id,
+                MockExamSession.section,
+                MockExamSession.difficulty,
+                MockExamSession.status,
+                MockExamSession.question_index,
+                MockExamSession.total_questions,
+                MockExamSession.band_score,
+                MockExamSession.section_scores,
+                MockExamSession.strengths,
+                MockExamSession.weaknesses,
+                MockExamSession.recommendations,
+                MockExamSession.report_markdown,
+                MockExamSession.started_at,
+                MockExamSession.completed_at,
+            )
             .where(MockExamSession.user == user_id)
             .order_by(MockExamSession.started_at, ascending=False)
             .limit(limit)
@@ -175,7 +197,7 @@ class ExamService:
         )
         if status:
             q = q.where(MockExamSession.status == status)
-        rows = await q.output(as_list=True)
+        rows = await q.output()
         return [
             {
                 "thread_id": r["thread_id"],

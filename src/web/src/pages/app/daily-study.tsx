@@ -150,30 +150,43 @@ export default function DailyStudyPage() {
                 {plan.ai_rationale && (
                   <p className="text-sm text-muted-foreground">{plan.ai_rationale}</p>
                 )}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {plan.activities.slice(0, 4).map((activity) => {
-                    const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
-                    return (
-                      <div
-                        key={activity.id}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg border border-border/50 p-2.5",
-                          activity.is_completed && "opacity-60"
-                        )}
-                      >
-                        <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", meta.bg)}>
-                          <meta.icon className={cn("h-4 w-4", meta.color)} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{activity.title}</div>
-                          <div className="text-xs capitalize text-muted-foreground">
-                            {activity.section} - {activity.activity_type}
+                <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {plan.activities.slice(0, 4).map((activity) => {
+                      const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
+                      return (
+                        <Link
+                          key={activity.id}
+                          to={`/app/daily-study/${plan.id}?activityId=${activity.id}`}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg border border-border/50 p-2.5 transition-all hover:border-primary/50 hover:bg-accent/30",
+                            activity.is_completed && "opacity-60"
+                          )}
+                        >
+                          <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", meta.bg)}>
+                            <meta.icon className={cn("h-4 w-4", meta.color)} />
                           </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">{activity.title}</div>
+                            <div className="text-xs capitalize text-muted-foreground">
+                              {activity.section}
+                            </div>
+                          </div>
+                          <RiArrowRightLine className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  {plan.activities.length > 4 && (
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-primary" asChild>
+                      <Link to={`/app/daily-study/${plan.id}`}>
+                        View all {plan.activities.length} activities
+                        <RiArrowRightLine className="ml-1 h-3 w-3" />
+                      </Link>
+                    </Button>
+                  )}
                 </div>
+
               </CardContent>
             </Card>
           ))
