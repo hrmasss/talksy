@@ -7,6 +7,7 @@ import re
 from typing import Literal
 
 from app.config import settings
+from app.core.logging import logger
 from app.memory.service import memory_service
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -61,7 +62,10 @@ async def initialise_exam_node(state: ExamState) -> dict:
     variant = state.get("exam_variant", "academic")
     user_id = state.get("user_id", "")
 
-    print(f"🎓 Initialising IELTS {section.title()} exam - {difficulty} (target {target_band})")
+    logger.info(
+        "Initialising IELTS {} exam - {} (target {})",
+        section.title(), difficulty, target_band,
+    )
 
     # ── Recall long-term memory for this user & section ──────────
     memory_context = ""
@@ -72,7 +76,7 @@ async def initialise_exam_node(state: ExamState) -> dict:
                 section=section,
             )
         except Exception as exc:
-            print(f"⚠️ Memory recall skipped: {exc}")
+            logger.warning("Memory recall skipped: {}", exc)
             memory_context = ""
 
         # Log exam start as user activity
@@ -91,7 +95,7 @@ async def initialise_exam_node(state: ExamState) -> dict:
                 },
             )
         except Exception as exc:
-            print(f"⚠️ Activity log skipped: {exc}")
+            logger.warning("Activity log skipped: {}", exc)
 
     part = 1
     if section == "speaking":
@@ -247,7 +251,7 @@ async def generate_question_node(state: ExamState) -> dict:
         "text": question_text,
     })
 
-    print(f"❓ Q{qn+1}/{total} [Part {part}] {q_type}: {question_text[:80]}…")
+    logger.info("Q{}/{} [Part {}] {}: {}…", qn+1, total, part, q_type, question_text[:80])
 
     return {
         "messages": [response],
@@ -273,7 +277,7 @@ async def process_answer_node(state: ExamState) -> dict:
     q_type = state.get("current_question_type", "unknown")
 
     if not answer:
-        print("⚠️ No answer provided")
+        logger.warning("No answer provided")
         return {}
 
     candidate_answers = list(state.get("candidate_answers", []))
@@ -327,7 +331,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         eval_data = evaluation.model_dump()
         eval_data["question_number"] = last["question_number"]
     except Exception as exc:
-        print(f"⚠️ Structured eval failed: {exc}")
+        logger.opt(exception=exc).warning("Structured eval failed")
         # Fallback: try raw JSON parse
         try:
             raw = await llm.ainvoke([HumanMessage(content=eval_prompt)])
@@ -343,7 +347,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
     scores.append(score)
 
     avg = sum(scores) / len(scores)
-    print(f"📊 Q{last['question_number']} band: {score} (avg so far: {avg:.1f})")
+    logger.info("Q{} band: {} (avg so far: {:.1f})", last['question_number'], score, avg)
 
     return {
         "candidate_answers": answers,
@@ -358,7 +362,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
 
 async def final_evaluation_node(state: ExamState) -> dict:
     """Comprehensive evaluation of the entire exam session."""
-    print("🎯 Running final IELTS evaluation …")
+    logger.info("Running final IELTS evaluation")
 
     section = state.get("exam_section", "speaking")
     answers = state.get("candidate_answers", [])
@@ -388,7 +392,7 @@ async def final_evaluation_node(state: ExamState) -> dict:
         )
         data = report.model_dump()
     except Exception as exc:
-        print(f"⚠️ Structured final eval failed: {exc}, trying raw …")
+        logger.opt(exception=exc).warning("Structured final eval failed, trying raw")
         try:
             raw = await llm.ainvoke([HumanMessage(content=prompt)])
             match = re.search(r"\{.*\}", raw.content, re.DOTALL)
@@ -410,7 +414,7 @@ async def final_evaluation_node(state: ExamState) -> dict:
         if 0 <= idx < len(answers):
             answers[idx]["evaluation"] = ev
 
-    print(f"✅ Final band score: {overall}")
+    logger.info("Final band score: {}", overall)
 
     # ── Persist to long-term memory ──────────────────────────────
     user_id = state.get("user_id", "")
@@ -431,7 +435,7 @@ async def final_evaluation_node(state: ExamState) -> dict:
                 },
             )
         except Exception as exc:
-            print(f"⚠️ Memory store after exam failed: {exc}")
+            logger.opt(exception=exc).warning("Memory store after exam failed")
 
     return {
         "candidate_answers": answers,

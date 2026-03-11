@@ -27,6 +27,7 @@ from app.schemas.ielts import (
     TestHistoryResponse,
 )
 from app.core.exceptions import AIServiceException
+from app.core.logging import logger
 from app.services.ielts import ielts_service
 from litestar import Controller, get, post, put
 from litestar.exceptions import NotFoundException
@@ -175,13 +176,20 @@ class IELTSController(Controller):
 
         section = data.section or "speaking"
 
-        result = await exam_service.create_exam_session(
-            user_id=str(user_id),
-            exam_type="ielts_academic",
-            section=section,
-            difficulty=difficulty,
-            target_band=target_band,
-        )
+        try:
+            result = await exam_service.create_exam_session(
+                user_id=str(user_id),
+                exam_type="ielts_academic",
+                section=section,
+                difficulty=difficulty,
+                target_band=target_band,
+            )
+        except Exception as exc:
+            logger.opt(exception=exc).error(
+                "Failed to start mock test for user={} section={}",
+                user_id, section,
+            )
+            raise AIServiceException(detail=f"Failed to start mock test: {exc}")
 
         return MockTestQuestionResponse(
             thread_id=result["thread_id"],
@@ -207,10 +215,17 @@ class IELTSController(Controller):
     ) -> MockTestQuestionResponse | MockTestReportResponse:
         from app.agents.services.exam_service import exam_service
 
-        result = await exam_service.answer_question(
-            thread_id=data.thread_id,
-            answer=data.answer,
-        )
+        try:
+            result = await exam_service.answer_question(
+                thread_id=data.thread_id,
+                answer=data.answer,
+            )
+        except Exception as exc:
+            logger.opt(exception=exc).error(
+                "Failed to process mock test answer for thread={}",
+                data.thread_id,
+            )
+            raise AIServiceException(detail=f"Failed to process answer: {exc}")
 
         if result.get("status") == "completed":
             return MockTestReportResponse(

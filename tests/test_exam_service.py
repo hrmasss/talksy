@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from app.agents.services.exam_service import ExamService
 
 
-def test_format_question_response_uses_current_question_fields() -> None:
-    result = ExamService._format_question_response(
+@pytest.mark.asyncio
+async def test_format_question_response_uses_current_question_fields() -> None:
+    result = await ExamService._format_question_response(
         {
             "status": "in_progress",
             "exam_section": "speaking",
@@ -25,8 +28,9 @@ def test_format_question_response_uses_current_question_fields() -> None:
     }
 
 
-def test_format_question_response_falls_back_to_latest_question_history() -> None:
-    result = ExamService._format_question_response(
+@pytest.mark.asyncio
+async def test_format_question_response_falls_back_to_latest_question_history() -> None:
+    result = await ExamService._format_question_response(
         {
             "status": "in_progress",
             "section": "reading",

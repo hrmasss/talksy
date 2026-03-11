@@ -7,6 +7,7 @@ import re
 from typing import Literal
 
 from app.config import settings
+from app.core.logging import logger
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..common.llm import get_llm
@@ -60,7 +61,7 @@ def _build_question_request(prompt: str) -> list[HumanMessage]:
 
 async def initialise_placement_node(state: PlacementState) -> dict:
     """Set up the placement test."""
-    print("🎓 Initialising IELTS Placement Test")
+    logger.info("Initialising IELTS Placement Test")
 
     return {
         "current_section": "listening",
@@ -115,7 +116,7 @@ async def generate_placement_question_node(state: PlacementState) -> dict:
     options = q_data.get("options", [])
     q_type = q_data.get("question_type", "multiple_choice")
 
-    print(f"❓ Placement Q{global_q + 1} [{section.upper()}]: {question_text[:80]}…")
+    logger.info("Placement Q{} [{}]: {}…", global_q + 1, section.upper(), question_text[:80])
 
     return {
         "messages": [SystemMessage(content=f"Generated {section} question {section_q}")],
@@ -163,7 +164,7 @@ async def process_placement_answer_node(state: PlacementState) -> dict:
         if new_section_idx < len(PLACEMENT_SECTIONS):
             new_section = PLACEMENT_SECTIONS[new_section_idx]
 
-    print(f"📝 Recorded answer for Q{new_global_q} [{section}]")
+    logger.info("Recorded answer for Q{} [{}]", new_global_q, section)
 
     return {
         "responses": responses,
@@ -182,7 +183,7 @@ async def process_placement_answer_node(state: PlacementState) -> dict:
 
 async def evaluate_placement_node(state: PlacementState) -> dict:
     """Evaluate all responses and produce the skill profile."""
-    print("🎯 Evaluating placement test responses…")
+    logger.info("Evaluating placement test responses")
 
     responses = state.get("responses", [])
     if not responses:
@@ -226,7 +227,7 @@ async def evaluate_placement_node(state: PlacementState) -> dict:
     }
 
     overall = data.get("overall_band", 5.0)
-    print(f"✅ Placement complete - Overall band: {overall}")
+    logger.info("Placement complete - Overall band: {}", overall)
 
     return {
         "section_scores": section_scores,

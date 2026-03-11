@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.config import settings
+from app.core.logging import logger
 
 from ..common.llm import get_llm
 from .models import (
@@ -41,7 +42,7 @@ def _time_ctx() -> dict:
 
 async def assess_level_node(state: TopicGeneratorState) -> dict:
     """Estimate the user's IELTS band from their self-description."""
-    print("📊 Assessing user IELTS level …")
+    logger.info("Assessing user IELTS level")
 
     llm = get_llm(model=settings.gemini_model, temperature=0.5)
     structured = llm.with_structured_output(LevelAssessment)
@@ -65,7 +66,7 @@ async def assess_level_node(state: TopicGeneratorState) -> dict:
     if target:
         band_range = f"{data['estimated_band']:.1f} → {target:.1f}"
 
-    print(f"✅ Estimated band: {data['estimated_band']} ({band_range})")
+    logger.info("Estimated band: {} ({})", data['estimated_band'], band_range)
 
     return {
         "estimated_band": data["estimated_band"],
@@ -85,7 +86,7 @@ async def assess_level_node(state: TopicGeneratorState) -> dict:
 
 async def generate_topics_node(state: TopicGeneratorState) -> dict:
     """Generate practice topics for all (or a focused) IELTS section."""
-    print("📝 Generating IELTS practice topics …")
+    logger.info("Generating IELTS practice topics")
 
     band_range = state.get("band_range", "5.5-6.0")
     target_band = f"{state.get('target_score', 6.5):.1f}"
@@ -176,11 +177,11 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
     # ensure the keys and results lists are the same length
     for key, result in zip(keys, results, strict=True):
         if isinstance(result, Exception):
-            print(f"⚠️  {key} topic generation failed: {result}")
+            logger.warning("{} topic generation failed: {}", key, result)
             out[key] = []
         else:
             out[key] = result
-            print(f"✅ {key}: {len(result)} topics generated")
+            logger.info("{}: {} topics generated", key, len(result))
 
     study_plan = (
         f"Focus on your weaknesses: {', '.join(state.get('weaknesses', []))}. "

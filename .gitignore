@@ -88,3 +88,5 @@ dist/
 .tmp/
 .temp/
 .ruff_cache/
+
+audio/

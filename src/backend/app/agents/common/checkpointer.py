@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.config import settings
+from app.core.logging import logger
 
 # Import the SQLite saver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -80,7 +81,7 @@ async def check_db_connection() -> bool:
                 await asyncio.sleep(delay)
                 delay *= 2
             else:
-                print(f"AI DB connection failed after {max_retries} attempts: {exc}")
+                logger.error("AI DB connection failed after {} attempts: {}", max_retries, exc)
     return False
 
 
@@ -111,14 +112,14 @@ async def get_checkpointer():
             pool = await _get_pool()
             _checkpointer = AsyncPostgresSaver(pool)
             await _checkpointer.setup()
-            print("✅ AsyncPostgresSaver checkpointer initialised")
+            logger.info("AsyncPostgresSaver checkpointer initialised")
             return _checkpointer
         except ImportError:
-            print("⚠️  langgraph-checkpoint-postgres not installed.")
-            raise RuntimeError("PostgreSQL saver requested but library missing.")
+            logger.error("langgraph-checkpoint-postgres not installed")
+            raise RuntimeError("PostgreSQL saver requested but library missing.") from None
         except Exception as exc:
-            print(f"⚠️  PostgreSQL checkpointer failed ({exc})")
-            raise RuntimeError(f"Failed to initialize PostgreSQL saver: {exc}")
+            logger.opt(exception=exc).error("PostgreSQL checkpointer failed")
+            raise RuntimeError(f"Failed to initialize PostgreSQL saver: {exc}") from exc
 
     else:
         # --- SQLite Fallback Path ---
@@ -136,11 +137,11 @@ async def get_checkpointer():
             await _sqlite_saver_instance.setup()
 
             _checkpointer = _sqlite_saver_instance
-            print(f"✅ AsyncSqliteSaver checkpointer initialised at {db_path.resolve()}")
+            logger.info("AsyncSqliteSaver checkpointer initialised at {}", db_path.resolve())
             return _checkpointer
         except Exception as exc:
-            print(f"❌ Failed to initialize SQLite saver: {exc}")
-            raise RuntimeError(f"Failed to initialize fallback SQLite saver: {exc}")
+            logger.opt(exception=exc).error("Failed to initialize SQLite saver")
+            raise RuntimeError(f"Failed to initialize fallback SQLite saver: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +172,7 @@ async def delete_thread(thread_id: str) -> None:
                     (thread_id,),
                 )
         except Exception as e:
-            print(f"Error deleting thread {thread_id} from Postgres: {e}")
+            logger.opt(exception=e).error("Error deleting thread {} from Postgres", thread_id)
             
     # For SQLite:
     # The AsyncSqliteSaver stores data in tables similar to Postgres.
@@ -194,4 +195,4 @@ async def delete_thread(thread_id: str) -> None:
                     await conn.execute("DELETE FROM checkpoint_writes WHERE thread_id = ?", (thread_id,))
                     await conn.commit()
             except Exception as e:
-                print(f"Error deleting thread {thread_id} from SQLite: {e}")
+                logger.opt(exception=e).error("Error deleting thread {} from SQLite", thread_id)

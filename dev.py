@@ -99,6 +99,8 @@ def main():
                 "--port", api_port,
                 "--loop", "auto" if sys.platform == "win32" else "uvloop",           
                 "--reload",                   
+                "--reload-paths", str(backend_dir / "app"),
+                "--reload-ignore-patterns", r".*\\.(sqlite|db|wal|shm)$",
                 # "--log-level", "info",      
             ]
             backend_proc = subprocess.Popen(
