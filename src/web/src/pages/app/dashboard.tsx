@@ -257,7 +257,7 @@ export default function DashboardPage() {
                     return (
                       <Link
                         key={activity.id}
-                        to={`/app/study/${activity.id}`}
+                        to={dailyPlan ? `/app/daily-study/${dailyPlan.id}` : "/app/daily-study"}
                       >
                         <div
                           className={cn(

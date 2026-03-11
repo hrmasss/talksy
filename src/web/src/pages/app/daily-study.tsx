@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import {
   RiArrowRightLine,
   RiBookOpenLine,
@@ -12,14 +12,12 @@ import {
   RiHeadphoneLine,
   RiLoader4Line,
   RiMicLine,
-  RiSendPlane2Line,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import {
-  getDailyPlan,
-  submitActivityResponse,
+  generateDailyPlan,
+  getDailyPlanHistory,
   type DailyStudyPlan,
-  type StudyActivity,
 } from "@/lib/ielts-api";
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
@@ -36,24 +34,21 @@ const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: s
 export default function DailyStudyPage() {
   const { user } = useAuth();
   const userId = user?.id;
-  const [plan, setPlan] = useState<DailyStudyPlan | null>(null);
+  const [plans, setPlans] = useState<DailyStudyPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedActivity, setSelectedActivity] = useState<StudyActivity | null>(null);
-  const [response, setResponse] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    band_score: number | null;
-    suggestions: string[];
-    is_correct: boolean | null;
-  } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [daysToLoad, setDaysToLoad] = useState(7);
+  const [hasMore, setHasMore] = useState(true);
+  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
     if (!userId) return;
     const currentUserId = userId;
     async function load() {
       try {
-        const p = await getDailyPlan(currentUserId);
-        setPlan(p);
+        const response = await getDailyPlanHistory(currentUserId, daysToLoad);
+        setPlans(response.items);
+        setHasMore(response.items.length >= daysToLoad && daysToLoad < 365);
       } catch (e) {
         console.error(e);
         toast.error(
@@ -67,46 +62,31 @@ export default function DailyStudyPage() {
       }
     }
     load();
-  }, [userId]);
+  }, [userId, daysToLoad]);
 
-  async function handleSubmitResponse() {
-    if (!selectedActivity || !response.trim()) return;
-    setSubmitting(true);
+  const todaysPlan = plans.find((p) => p.study_date === todayKey);
+
+  async function handleGenerate() {
+    if (!userId) return;
+    setGenerating(true);
     try {
-      const result = await submitActivityResponse(selectedActivity.id, response.trim());
-      setFeedback({
-        band_score: result.band_score,
-        suggestions: result.suggestions,
-        is_correct: result.is_correct,
+      const created = await generateDailyPlan(userId);
+      setPlans((prev) => {
+        const filtered = prev.filter((p) => p.id !== created.id);
+        return [created, ...filtered];
       });
-      toast.success("Response submitted successfully.");
-      // Mark completed locally
-      if (plan) {
-        setPlan({
-          ...plan,
-          completed_count: plan.completed_count + 1,
-          activities: plan.activities.map((a) =>
-            a.id === selectedActivity.id ? { ...a, is_completed: true } : a
-          ),
-        });
-      }
+      toast.success("Today's plan is ready.");
     } catch (e) {
       console.error(e);
       toast.error(
         getUserFacingErrorMessage(
           e,
-          "Couldn't submit your response. Please try again."
+          "Couldn't generate your study plan. Please try again."
         )
       );
     } finally {
-      setSubmitting(false);
+      setGenerating(false);
     }
-  }
-
-  function handleBackToList() {
-    setSelectedActivity(null);
-    setResponse("");
-    setFeedback(null);
   }
 
   if (loading) {
@@ -117,184 +97,108 @@ export default function DailyStudyPage() {
     );
   }
 
-  // ── Activity Detail View ──────────────────────────────────────
-  if (selectedActivity) {
-    const meta = sectionMeta[selectedActivity.section] || sectionMeta.vocabulary;
-
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-8">
-        <button
-          onClick={handleBackToList}
-          className="mb-4 text-sm text-muted-foreground hover:text-foreground"
-        >
-          &larr; Back to plan
-        </button>
-
-        <div className="mb-4 flex items-center gap-3">
-          <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", meta.bg)}>
-            <meta.icon className={cn("h-5 w-5", meta.color)} />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold">{selectedActivity.title}</h2>
-            <span className="text-xs capitalize text-muted-foreground">
-              {selectedActivity.section} · {selectedActivity.activity_type}
-            </span>
-          </div>
-        </div>
-
-        {/* Activity Content */}
-        <Card className="mb-4">
-          <CardContent className="prose prose-sm dark:prose-invert pt-4">
-            {"instructions" in selectedActivity.content && (
-              <p>{String(selectedActivity.content.instructions)}</p>
-            )}
-            {"prompt" in selectedActivity.content && (
-              <p className="font-medium">{String(selectedActivity.content.prompt)}</p>
-            )}
-            {"passage" in selectedActivity.content && (
-              <blockquote className="text-sm">{String(selectedActivity.content.passage)}</blockquote>
-            )}
-            {Array.isArray(selectedActivity.content.options) && (
-              <ul>
-                {(selectedActivity.content.options as string[]).map((opt, i) => (
-                  <li key={i}>{opt}</li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Feedback Display */}
-        {feedback ? (
-          <Card className="mb-4">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <RiCheckLine className="h-4 w-4 text-emerald-500" />
-                Feedback
-                {feedback.band_score != null && (
-                  <Badge variant="secondary" className="ml-auto text-xs">
-                    Band {feedback.band_score}
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {feedback.is_correct != null && (
-                <p className={cn("mb-2 text-sm font-medium", feedback.is_correct ? "text-emerald-600" : "text-amber-600")}>
-                  {feedback.is_correct ? "Correct!" : "Not quite right."}
-                </p>
-              )}
-              {feedback.suggestions.length > 0 && (
-                <ul className="space-y-1">
-                  {feedback.suggestions.map((s, i) => (
-                    <li key={i} className="flex gap-2 text-sm">
-                      <RiArrowRightLine className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        ) : selectedActivity.is_completed ? (
-          <Card className="mb-4">
-            <CardContent className="flex items-center gap-2 py-4 text-sm text-emerald-600">
-              <RiCheckLine className="h-4 w-4" />
-              Activity already completed.
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <Textarea
-              value={response}
-              onChange={(e) => setResponse(e.target.value)}
-              placeholder="Type your answer here…"
-              className="mb-3 min-h-30 resize-none"
-            />
-            <Button
-              onClick={handleSubmitResponse}
-              disabled={!response.trim() || submitting}
-              className="w-full"
-            >
-              {submitting ? (
-                <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RiSendPlane2Line className="mr-2 h-4 w-4" />
-              )}
-              Submit Response
-            </Button>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // ── Plan List View ────────────────────────────────────────────
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Daily Study</h1>
           <p className="text-sm text-muted-foreground">
-            {plan ? `${plan.study_date} · ${plan.completed_count}/${plan.total_count} completed` : "No plan available"}
+            Review the last 7 days of plans and generate today's study.
           </p>
         </div>
-        {plan && (
-          <Badge variant={plan.is_completed ? "default" : "secondary"}>
-            {plan.is_completed ? "All done!" : `${plan.total_count - plan.completed_count} remaining`}
-          </Badge>
+        {!todaysPlan && (
+          <Button onClick={handleGenerate} disabled={generating}>
+            {generating ? (
+              <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RiCheckLine className="mr-2 h-4 w-4" />
+            )}
+            Generate Today
+          </Button>
         )}
       </div>
 
-      {plan && plan.ai_rationale && (
-        <Card className="mb-4">
-          <CardContent className="py-3 text-sm text-muted-foreground">
-            {plan.ai_rationale}
-          </CardContent>
-        </Card>
-      )}
-
-      {plan && plan.activities.length > 0 ? (
-        <div className="space-y-2">
-          {plan.activities.map((activity) => {
-            const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
-            return (
-              <button
-                key={activity.id}
-                onClick={() => setSelectedActivity(activity)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-all hover:bg-accent",
-                  activity.is_completed && "opacity-60"
-                )}
-              >
-                <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", meta.bg)}>
-                  <meta.icon className={cn("h-5 w-5", meta.color)} />
+      <div className="space-y-4">
+        {plans.length > 0 ? (
+          plans.map((plan) => (
+            <Card key={plan.id}>
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base">
+                    {plan.study_date === todayKey ? "Today" : plan.study_date}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {plan.completed_count}/{plan.total_count} completed
+                  </p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{activity.title}</div>
-                  <div className="text-xs capitalize text-muted-foreground">
-                    {activity.section} · {activity.activity_type}
-                  </div>
-                </div>
-                {activity.is_completed ? (
-                  <Badge variant="secondary" className="text-xs text-emerald-600">
-                    <RiCheckLine className="mr-1 h-3 w-3" />
-                    Done
+                <div className="flex items-center gap-2">
+                  {plan.study_date === todayKey && (
+                    <Badge variant="default" className="text-xs">Today</Badge>
+                  )}
+                  <Badge variant={plan.is_completed ? "default" : "secondary"} className="text-xs">
+                    {plan.is_completed ? "Completed" : "In progress"}
                   </Badge>
-                ) : (
-                  <RiArrowRightLine className="h-4 w-4 text-muted-foreground" />
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to={`/app/daily-study/${plan.id}`}>
+                      Details
+                      <RiArrowRightLine className="ml-2 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {plan.ai_rationale && (
+                  <p className="text-sm text-muted-foreground">{plan.ai_rationale}</p>
                 )}
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="py-16 text-center">
-          <p className="text-muted-foreground">
-            No study plan available yet. Complete the placement test to get a personalized plan.
-          </p>
-        </div>
-      )}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {plan.activities.slice(0, 4).map((activity) => {
+                    const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
+                    return (
+                      <div
+                        key={activity.id}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg border border-border/50 p-2.5",
+                          activity.is_completed && "opacity-60"
+                        )}
+                      >
+                        <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", meta.bg)}>
+                          <meta.icon className={cn("h-4 w-4", meta.color)} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">{activity.title}</div>
+                          <div className="text-xs capitalize text-muted-foreground">
+                            {activity.section} - {activity.activity_type}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">
+                No study plans yet. Generate today's plan to get started.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {plans.length > 0 && (
+          <div className="flex justify-center pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setDaysToLoad((prev) => Math.min(prev + 7, 365))}
+              disabled={!hasMore}
+            >
+              {hasMore ? "Load previous 7 days" : "No more plans"}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

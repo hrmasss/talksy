@@ -16,6 +16,7 @@ const AppDashboard = lazy(() => import("@/pages/app/dashboard"));
 const AppOnboarding = lazy(() => import("@/pages/app/onboarding"));
 const AppMockTest = lazy(() => import("@/pages/app/mock-test"));
 const AppDailyStudy = lazy(() => import("@/pages/app/daily-study"));
+const AppDailyStudyDetail = lazy(() => import("@/pages/app/daily-study-detail"));
 const AppProgress = lazy(() => import("@/pages/app/progress"));
 const AppRoadmap = lazy(() => import("@/pages/app/roadmap"));
 const AppRoadmapDetail = lazy(() => import("@/pages/app/roadmap-detail"));
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="onboarding" element={<AppOnboarding />} />
             <Route path="mock-test" element={<AppMockTest />} />
             <Route path="daily-study" element={<AppDailyStudy />} />
+            <Route path="daily-study/:planId" element={<AppDailyStudyDetail />} />
             <Route path="progress" element={<AppProgress />} />
             <Route path="roadmap" element={<AppRoadmap />} />
             <Route path="roadmap/:phaseId" element={<AppRoadmapDetail />} />

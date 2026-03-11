@@ -86,7 +86,6 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
 
   // Show the welcome modal on first load if not onboarded
@@ -190,6 +189,8 @@ export default function AppLayout() {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
+
+            {null}
           </SidebarContent>
 
           <SidebarFooter>

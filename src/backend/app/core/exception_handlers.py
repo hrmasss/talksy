@@ -15,7 +15,7 @@ def validation_exception_handler(request: Request, exc: Exception) -> Response:
 
 def internal_error_handler(request: Request, exc: Exception) -> Response:
     """Handle uncaught internal errors transparently."""
-    logger.error("Internal Server Error: %s", str(exc), exc_info=exc)
+    logger.opt(exception=exc).error("Internal Server Error: {}", str(exc))
     return Response(
         content={"detail": "Internal server error"},
         status_code=HTTP_500_INTERNAL_SERVER_ERROR,

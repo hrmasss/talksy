@@ -152,6 +152,12 @@ class DailyStudyPlanResponse(BaseSchema):
     ai_rationale: str | None = None
 
 
+class DailyStudyHistoryResponse(BaseSchema):
+    """List of recent daily study plans."""
+
+    items: list[DailyStudyPlanResponse] = []
+
+
 class StudyActivityResponse(BaseSchema):
     """A single study activity."""
 

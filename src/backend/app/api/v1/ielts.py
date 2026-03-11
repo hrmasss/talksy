@@ -8,6 +8,7 @@ from uuid import UUID
 
 from app.schemas.ielts import (
     DailyStudyPlanResponse,
+    DailyStudyHistoryResponse,
     IELTSProfileResponse,
     IELTSProfileUpdate,
     MockTestAnswerRequest,
@@ -23,6 +24,7 @@ from app.schemas.ielts import (
     StudyActivitySubmitRequest,
     TestHistoryResponse,
 )
+from app.core.exceptions import AIServiceException
 from app.services.ielts import ielts_service
 from litestar import Controller, get, post, put
 from litestar.exceptions import NotFoundException
@@ -230,7 +232,45 @@ class IELTSController(Controller):
     async def get_daily_plan(self, user_id: UUID) -> DailyStudyPlanResponse:
         result = await ielts_service.get_or_generate_daily_plan(user_id)
         if result.get("error"):
-            raise NotFoundException(detail=result["error"])
+            if result["error"] == "user_not_found":
+                raise NotFoundException(detail="User not found")
+            raise AIServiceException(detail=result["error"])
+        return DailyStudyPlanResponse(**result)
+
+    @get(
+        "/study/daily/history/{user_id:uuid}",
+        summary="Get Recent Daily Study Plans",
+        description="Get the most recent daily study plans (default last 7 days).",
+        status_code=HTTP_200_OK,
+    )
+    async def get_daily_plan_history(self, user_id: UUID, days: int = 7) -> DailyStudyHistoryResponse:
+        result = await ielts_service.list_recent_daily_plans(user_id, days=days)
+        return DailyStudyHistoryResponse(**result)
+
+    @get(
+        "/study/daily/plan/{plan_id:uuid}",
+        summary="Get Daily Study Plan By Id",
+        description="Get a specific daily study plan with its activities.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_daily_plan_by_id(self, plan_id: UUID, user_id: UUID) -> DailyStudyPlanResponse:
+        result = await ielts_service.get_daily_plan_by_id(user_id, plan_id)
+        if result.get("error"):
+            raise NotFoundException(detail="Daily plan not found")
+        return DailyStudyPlanResponse(**result)
+
+    @post(
+        "/study/daily/generate/{user_id:uuid}",
+        summary="Generate Daily Study Plan",
+        description="Generate today's daily study plan if it doesn't exist.",
+        status_code=HTTP_200_OK,
+    )
+    async def generate_daily_plan(self, user_id: UUID) -> DailyStudyPlanResponse:
+        result = await ielts_service.get_or_generate_daily_plan(user_id)
+        if result.get("error"):
+            if result["error"] == "user_not_found":
+                raise NotFoundException(detail="User not found")
+            raise AIServiceException(detail=result["error"])
         return DailyStudyPlanResponse(**result)
 
     @post(

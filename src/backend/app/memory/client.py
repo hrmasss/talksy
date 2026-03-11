@@ -27,10 +27,23 @@ _EMBEDDING_DIMS: dict[str, int] = {
 
 
 def get_embedding_dim() -> int:
-    """Return the vector dimension for the currently configured model."""
+    """Return the vector dimension for the currently configured model.
+
+    Ensures the dimension matches the *actual* embeddings instance (which
+    may have fallen back to HuggingFace).
+    """
+    # Trigger creation so we know the real provider
+    emb = get_embeddings()
+    # Check which provider ended up being used
+    try:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        if isinstance(emb, HuggingFaceEmbeddings):
+            model = settings.huggingface_embedding_model
+            return _EMBEDDING_DIMS.get(model, 384)
+    except ImportError:
+        pass
+
     model = settings.embedding_model
-    if settings.embedding_provider == "huggingface":
-        model = settings.huggingface_embedding_model
     return _EMBEDDING_DIMS.get(model, settings.qdrant_embedding_dim)
 
 
@@ -38,32 +51,53 @@ def get_embedding_dim() -> int:
 # Embeddings
 # ---------------------------------------------------------------------------
 
-@lru_cache
+_embeddings_instance: Embeddings | None = None
+
+
 def get_embeddings() -> Embeddings:
     """Return a cached embeddings instance based on ``EMBEDDING_PROVIDER``.
 
     * ``google``      - uses ``langchain_google_genai.GoogleGenerativeAIEmbeddings``
     * ``huggingface`` - uses ``langchain_huggingface.HuggingFaceEmbeddings`` (local)
+
+    When provider is ``google``, a quick validation embed is attempted.
+    If it fails (wrong API version, quota, model not found, etc.) the
+    function **automatically falls back** to a local HuggingFace model
+    so the memory system stays functional.
     """
+    global _embeddings_instance
+    if _embeddings_instance is not None:
+        return _embeddings_instance
+
     provider = settings.embedding_provider
 
     if provider == "google":
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        try:
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+            from app.agents.common.llm import next_api_key
 
-        from app.agents.common.llm import next_api_key
+            api_key = next_api_key()
+            emb = GoogleGenerativeAIEmbeddings(
+                model=settings.embedding_model,
+                google_api_key=api_key,
+            )
+            # Validate that the model actually works
+            emb.embed_query("test")
+            _embeddings_instance = emb
+            return _embeddings_instance
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Google embeddings unavailable (%s), falling back to HuggingFace", exc
+            )
 
-        api_key = next_api_key()
-        return GoogleGenerativeAIEmbeddings(
-            model=settings.embedding_model,
-            google_api_key=api_key,
-        )
-
-    if provider == "huggingface":
+    if provider in ("google", "huggingface"):
         from langchain_huggingface import HuggingFaceEmbeddings
 
-        return HuggingFaceEmbeddings(
+        _embeddings_instance = HuggingFaceEmbeddings(
             model_name=settings.huggingface_embedding_model,
         )
+        return _embeddings_instance
 
     raise ValueError(f"Unknown embedding_provider: '{provider}'")
 

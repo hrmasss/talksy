@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -315,6 +315,40 @@ class IELTSService:
         # Generate new plan
         return await self._generate_daily_plan(user_id, today)
 
+    async def get_daily_plan_by_id(self, user_id: UUID, plan_id: UUID) -> dict[str, Any]:
+        """Return a specific daily plan by id."""
+        plan = await DailyStudyPlan.select().where(
+            (DailyStudyPlan.id == plan_id) &
+            (DailyStudyPlan.user == user_id)
+        ).first()
+        if not plan:
+            return {"error": "daily_plan_not_found"}
+
+        activities = await StudyActivity.select().where(
+            StudyActivity.daily_plan == plan_id
+        ).order_by(StudyActivity.created_at)
+        return self._format_daily_plan(plan, activities)
+
+    async def list_recent_daily_plans(self, user_id: UUID, days: int = 7) -> dict[str, Any]:
+        """Return the most recent daily plans within the last N days."""
+        days = max(1, min(days, 365))
+        today = date.today()
+        start_date = today - timedelta(days=days - 1)
+
+        plans = await DailyStudyPlan.select().where(
+            (DailyStudyPlan.user == user_id) &
+            (DailyStudyPlan.study_date >= start_date)
+        ).order_by(DailyStudyPlan.study_date, ascending=False)
+
+        items: list[dict[str, Any]] = []
+        for plan in plans:
+            activities = await StudyActivity.select().where(
+                StudyActivity.daily_plan == plan["id"]
+            ).order_by(StudyActivity.created_at)
+            items.append(self._format_daily_plan(plan, activities))
+
+        return {"items": items}
+
     async def _generate_daily_plan(self, user_id: UUID, study_date: date) -> dict[str, Any]:
         """Generate a new AI-powered daily study plan."""
         user = await User.select().where(User.id == user_id).first()
@@ -352,10 +386,19 @@ class IELTSService:
             practice_time_minutes=practice_time,
         )
 
+        if not prompt or not prompt.strip():
+            logger.error("Daily study plan prompt unexpectedly empty (user_id={})", str(user_id))
+            return {"error": "daily_plan_prompt_empty"}
+
         llm = get_llm(model=settings.gemini_model, temperature=0.7)
-        raw = await llm.ainvoke([
-            {"role": "system", "content": prompt},
-        ])
+        try:
+            raw = await llm.ainvoke([{"role": "user", "content": prompt}])
+        except Exception as exc:
+            logger.opt(exception=exc).error(
+                "Daily study plan LLM call failed (user_id={})",
+                str(user_id),
+            )
+            return {"error": "daily_plan_generation_failed"}
 
         try:
             match = re.search(r"\{.*\}", raw.content, re.DOTALL)

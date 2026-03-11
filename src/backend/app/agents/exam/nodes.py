@@ -211,9 +211,12 @@ async def generate_question_node(state: ExamState) -> dict:
     messages = list(state.get("messages", []))
 
     # Inject an updated system message
-    messages = [SystemMessage(content=sys_prompt)] + [
-        m for m in messages if not isinstance(m, SystemMessage)
-    ]
+    non_system = [m for m in messages if not isinstance(m, SystemMessage)]
+    messages = [SystemMessage(content=sys_prompt)] + non_system
+
+    # Gemini requires at least one user message in the contents
+    if not non_system:
+        messages.append(HumanMessage(content="Please begin the exam and ask the first question."))
 
     response = await llm.ainvoke(messages)
     question_text = response.content.strip()
