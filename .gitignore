@@ -90,3 +90,7 @@ dist/
 .ruff_cache/
 
 audio/
+
+!src/web/src/lib/
+!src/web/src/lib/*.ts
+!src/web/src/lib/*.tsx

@@ -52,6 +52,10 @@ export default function DailyStudyDetailPage() {
     is_correct: boolean | null;
   } | null>(null);
 
+  function isContentRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
   useEffect(() => {
     if (!planId || !userId) {
       setLoading(false);
@@ -91,9 +95,9 @@ export default function DailyStudyDetailPage() {
     try {
       const result = await submitActivityResponse(selectedActivity.id, response.trim());
       setFeedback({
-        band_score: result.band_score,
+        band_score: result.band_score ?? null,
         suggestions: result.suggestions,
-        is_correct: result.is_correct,
+        is_correct: result.is_correct ?? null,
       });
       toast.success("Response submitted successfully.");
       if (plan) {
@@ -124,9 +128,9 @@ export default function DailyStudyDetailPage() {
     try {
       const result = await submitActivityResponse(selectedActivity.id, "Completed.");
       setFeedback({
-        band_score: result.band_score,
+        band_score: result.band_score ?? null,
         suggestions: result.suggestions,
-        is_correct: result.is_correct,
+        is_correct: result.is_correct ?? null,
       });
       toast.success("Marked as completed.");
       if (plan) {
@@ -210,6 +214,13 @@ export default function DailyStudyDetailPage() {
         {plan.activities.map((activity) => {
           const isSelected = selectedActivity?.id === activity.id;
           const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
+          const content = activity.content;
+          const contentRecord = isContentRecord(content) ? content : null;
+          const contentIsEmpty =
+            content == null ||
+            (typeof content === "string" && content.trim().length === 0) ||
+            (Array.isArray(content) && content.length === 0) ||
+            (contentRecord != null && Object.keys(contentRecord).length === 0);
           
           return (
             <div
@@ -257,42 +268,52 @@ export default function DailyStudyDetailPage() {
               {isSelected && (
                 <div className="border-t bg-muted/30 p-4 space-y-4">
                   <div className="prose prose-sm dark:prose-invert">
-                    {"instructions" in activity.content && (
-                      <p className="font-medium text-foreground">{String(activity.content.instructions)}</p>
+                    {typeof content === "string" && (
+                      <p className="text-muted-foreground">{content}</p>
                     )}
-                    {"prompt" in activity.content && (
-                      <p className="text-muted-foreground">{String(activity.content.prompt)}</p>
-                    )}
-                    {"material" in activity.content && typeof activity.content.material === "string" && (
-                      <p className="text-muted-foreground">{activity.content.material}</p>
-                    )}
-                    {"material" in activity.content && Array.isArray(activity.content.material) && (
+                    {Array.isArray(content) && (
                       <ul className="list-disc pl-4 space-y-1">
-                        {(activity.content.material as string[]).map((item, i) => (
-                          <li key={i} className="text-muted-foreground">{item}</li>
+                        {content.map((item, i) => (
+                          <li key={i} className="text-muted-foreground">{String(item)}</li>
                         ))}
                       </ul>
                     )}
-                    {"passage" in activity.content && (
+                    {contentRecord?.instructions != null && (
+                      <p className="font-medium text-foreground">{String(contentRecord.instructions)}</p>
+                    )}
+                    {contentRecord?.prompt != null && (
+                      <p className="text-muted-foreground">{String(contentRecord.prompt)}</p>
+                    )}
+                    {typeof contentRecord?.material === "string" && (
+                      <p className="text-muted-foreground">{contentRecord.material}</p>
+                    )}
+                    {Array.isArray(contentRecord?.material) && (
+                      <ul className="list-disc pl-4 space-y-1">
+                        {contentRecord.material.map((item, i) => (
+                          <li key={i} className="text-muted-foreground">{String(item)}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {contentRecord?.passage != null && (
                       <blockquote className="border-l-2 pl-4 italic text-muted-foreground">
-                        {String(activity.content.passage)}
+                        {String(contentRecord.passage)}
                       </blockquote>
                     )}
-                    {"questions" in activity.content && Array.isArray(activity.content.questions) && (
+                    {Array.isArray(contentRecord?.questions) && (
                       <ul className="list-decimal pl-4 space-y-2">
-                        {(activity.content.questions as string[]).map((q, i) => (
-                          <li key={i} className="text-foreground">{q}</li>
+                        {contentRecord.questions.map((q, i) => (
+                          <li key={i} className="text-foreground">{String(q)}</li>
                         ))}
                       </ul>
                     )}
-                    {Array.isArray(activity.content.options) && (
+                    {Array.isArray(contentRecord?.options) && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        {(activity.content.options as string[]).map((opt, i) => (
-                          <div key={i} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{opt}</div>
+                        {contentRecord.options.map((opt, i) => (
+                          <div key={i} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>
                         ))}
                       </div>
                     )}
-                    {(!activity.content || Object.keys(activity.content).length === 0) && (
+                    {contentIsEmpty && (
                       <p className="text-muted-foreground italic">No specific content details available.</p>
                     )}
                   </div>
