@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
   RiArrowRightLine,
-  RiArrowLeftLine,
   RiCheckLine,
   RiLoader4Line,
   RiHeadphoneLine,
@@ -158,7 +157,7 @@ export default function OnboardingPage() {
     setLoading(true);
     try {
       let audioBase64: string | undefined;
-      let finalAnswer = answer.trim() || undefined;
+      const finalAnswer = answer.trim() || undefined;
       
       if (isRecording) {
         toast.info("Processing your speech...");
