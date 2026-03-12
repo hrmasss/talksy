@@ -6,6 +6,7 @@ All Qdrant interactions are encapsulated here so the rest of the app
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -62,6 +63,51 @@ class MemoryService:
     # Store
     # ------------------------------------------------------------------
 
+    async def _bg_store(self, entry: MemoryEntry) -> None:
+        """Background task to embed and store a single memory entry."""
+        try:
+            embeddings = get_embeddings()
+            vector = await embeddings.aembed_query(entry.content)
+
+            client = get_qdrant_client()
+            client.upsert(
+                collection_name=_COLLECTION,
+                points=[
+                    qmodels.PointStruct(
+                        id=entry.id,
+                        vector=vector,
+                        payload=entry.to_qdrant_payload(),
+                    )
+                ],
+            )
+            logger.debug(
+                f"Background-stored memory id={entry.id} user={entry.user_id} cat={entry.category.value}"
+            )
+        except Exception:
+            logger.exception(f"Failed to background-store memory {entry.id}")
+
+    async def _bg_store_many(self, entries: Sequence[MemoryEntry]) -> None:
+        """Background task to embed and store multiple memory entries."""
+        try:
+            embeddings = get_embeddings()
+            texts = [e.content for e in entries]
+            vectors = await embeddings.aembed_documents(texts)
+
+            points = [
+                qmodels.PointStruct(
+                    id=entry.id,
+                    vector=vec,
+                    payload=entry.to_qdrant_payload(),
+                )
+                for entry, vec in zip(entries, vectors, strict=False)
+            ]
+
+            client = get_qdrant_client()
+            client.upsert(collection_name=_COLLECTION, points=points)
+            logger.debug(f"Background-batch-stored {len(points)} memories")
+        except Exception:
+            logger.exception(f"Failed to background-batch-store {len(entries)} memories")
+
     async def store(
         self,
         *,
@@ -72,9 +118,9 @@ class MemoryService:
         importance: float = 0.5,
         memory_id: str | None = None,
     ) -> MemoryEntry:
-        """Embed *content* and upsert it into Qdrant.
+        """Create a :class:`MemoryEntry` and schedule background storage in Qdrant.
 
-        Returns the created / updated :class:`MemoryEntry`.
+        Returns the created :class:`MemoryEntry` immediately.
         """
         self._ensure_collection()
 
@@ -90,49 +136,21 @@ class MemoryService:
             importance=importance,
         )
 
-        embeddings = get_embeddings()
-        vector = await embeddings.aembed_query(entry.content)
+        # Schedule background storage
+        asyncio.create_task(self._bg_store(entry))
 
-        client = get_qdrant_client()
-        client.upsert(
-            collection_name=_COLLECTION,
-            points=[
-                qmodels.PointStruct(
-                    id=entry.id,
-                    vector=vector,
-                    payload=entry.to_qdrant_payload(),
-                )
-            ],
-        )
-
-        logger.debug(
-            f"Stored memory id={entry.id} user={user_id} cat={category.value}"
-        )
         return entry
 
     async def store_many(
         self,
         entries: Sequence[MemoryEntry],
     ) -> list[MemoryEntry]:
-        """Batch-store multiple memory entries."""
+        """Schedule background batch-storage of multiple memory entries."""
         self._ensure_collection()
-        embeddings = get_embeddings()
-
-        texts = [e.content for e in entries]
-        vectors = await embeddings.aembed_documents(texts)
-
-        points = [
-            qmodels.PointStruct(
-                id=entry.id,
-                vector=vec,
-                payload=entry.to_qdrant_payload(),
-            )
-            for entry, vec in zip(entries, vectors, strict=False)
-        ]
-
-        client = get_qdrant_client()
-        client.upsert(collection_name=_COLLECTION, points=points)
-        logger.debug(f"Batch-stored {len(points)} memories")
+        
+        # Schedule background storage
+        asyncio.create_task(self._bg_store_many(entries))
+        
         return list(entries)
 
     # ------------------------------------------------------------------
@@ -389,25 +407,29 @@ class MemoryService:
 
         # Per-category counts
         cat_counts: dict[str, int] = {}
+        # Skip categories that are commented out or shouldn't be tracked
         for cat in MemoryCategory:
-            c = client.count(
-                collection_name=_COLLECTION,
-                count_filter=qmodels.Filter(
-                    must=[
-                        qmodels.FieldCondition(
-                            key="user_id",
-                            match=qmodels.MatchValue(value=user_id),
-                        ),
-                        qmodels.FieldCondition(
-                            key="category",
-                            match=qmodels.MatchValue(value=cat.value),
-                        ),
-                    ]
-                ),
-                exact=False,
-            ).count
-            if c > 0:
-                cat_counts[cat.value] = c
+            try:
+                c = client.count(
+                    collection_name=_COLLECTION,
+                    count_filter=qmodels.Filter(
+                        must=[
+                            qmodels.FieldCondition(
+                                key="user_id",
+                                match=qmodels.MatchValue(value=user_id),
+                            ),
+                            qmodels.FieldCondition(
+                                key="category",
+                                match=qmodels.MatchValue(value=cat.value),
+                            ),
+                        ]
+                    ),
+                    exact=False,
+                ).count
+                if c > 0:
+                    cat_counts[cat.value] = c
+            except ValueError:
+                continue
 
         # Pull latest entries for specific categories
         exam_results = await self.get_by_category(
@@ -422,9 +444,11 @@ class MemoryService:
         goals_entries = await self.get_by_category(
             user_id=user_id, category=MemoryCategory.GOAL, limit=5
         )
-        activity_entries = await self.get_by_category(
-            user_id=user_id, category=MemoryCategory.USER_ACTIVITY, limit=1
-        )
+        
+        # Activity tracking is currently disabled
+        # activity_entries = await self.get_by_category(
+        #     user_id=user_id, category=MemoryCategory.USER_ACTIVITY, limit=1
+        # )
 
         return UserProgressSummary(
             user_id=user_id,
@@ -436,7 +460,7 @@ class MemoryService:
             strengths=[e.content for e in strengths_entries],
             weaknesses=[e.content for e in weaknesses_entries],
             goals=[e.content for e in goals_entries],
-            latest_activity=activity_entries[0].content if activity_entries else None,
+            latest_activity=None, # activity_entries[0].content if activity_entries else None,
         )
 
     # ------------------------------------------------------------------
@@ -455,13 +479,13 @@ class MemoryService:
         report_summary: str = "",
         extra_metadata: dict[str, Any] | None = None,
     ) -> list[MemoryEntry]:
-        """After an exam completes, persist the result and derived insights.
+        """After an exam completes, schedule background storage for results and derived insights.
 
         Creates multiple memories:
         1. An ``EXAM_RESULT`` entry with the summary.
         2. Individual ``STRENGTH`` entries.
         3. Individual ``WEAKNESS`` entries.
-        4. A ``USER_ACTIVITY`` log entry.
+        4. (Currently disabled: Activity log)
         """
         now = datetime.now(UTC)
         entries: list[MemoryEntry] = []
@@ -515,18 +539,18 @@ class MemoryService:
                 )
             )
 
-        # 4) Activity log
-        entries.append(
-            MemoryEntry(
-                user_id=user_id,
-                category=MemoryCategory.USER_ACTIVITY,
-                content=f"User completed a {section} exam. Band score: {band_score}.",
-                importance=0.5,
-                metadata={"action": "exam_completed", "section": section, "band_score": band_score},
-                created_at=now,
-                updated_at=now,
-            )
-        )
+        # 4) Activity log (Currently disabled as requested)
+        # entries.append(
+        #     MemoryEntry(
+        #         user_id=user_id,
+        #         category=MemoryCategory.USER_ACTIVITY,
+        #         content=f"User completed a {section} exam. Band score: {band_score}.",
+        #         importance=0.5,
+        #         metadata={"action": "exam_completed", "section": section, "band_score": band_score},
+        #         created_at=now,
+        #         updated_at=now,
+        #     )
+        # )
 
         # 5) Also store per-section category memory for targeted recall
         section_cat_map = {
@@ -567,16 +591,10 @@ class MemoryService:
         detail: str = "",
         metadata: dict[str, Any] | None = None,
         importance: float = 0.4,
-    ) -> MemoryEntry:
-        """Quick helper to log a user activity."""
-        content = f"{action}: {detail}" if detail else action
-        return await self.store(
-            user_id=user_id,
-            category=MemoryCategory.USER_ACTIVITY,
-            content=content,
-            metadata={"action": action, **(metadata or {})},
-            importance=importance,
-        )
+    ) -> MemoryEntry | None:
+        """Quick helper to log a user activity. (Currently disabled as requested)"""
+        logger.debug(f"User activity tracking is disabled. Skipping: {action}")
+        return None
 
     async def recall_for_exam(
         self,

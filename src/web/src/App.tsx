@@ -29,6 +29,7 @@ const AdminUsers = lazy(() => import("@/pages/admin/users"));
 const AdminExams = lazy(() => import("@/pages/admin/exams"));
 const AdminQuestions = lazy(() => import("@/pages/admin/questions"));
 const AdminAnalytics = lazy(() => import("@/pages/admin/analytics"));
+const AdminModelBrowser = lazy(() => import("@/pages/admin/model-browser"));
 
 function LoadingSpinner() {
   return (
@@ -38,19 +39,33 @@ function LoadingSpinner() {
   );
 }
 
-/** Redirects to /login if not authenticated */
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+/** Redirects admins to /admin, requires authentication for regular users */
+function RequireUser({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuth();
   if (isLoading) return <LoadingSpinner />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // Admins should use admin dashboard, not regular app
+  if (user?.role === "admin") return <Navigate to="/admin" replace />;
   return <>{children}</>;
 }
 
-/** Redirects to /app if already authenticated */
-function GuestOnly({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+/** Redirects to /app if not admin */
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuth();
   if (isLoading) return <LoadingSpinner />;
-  if (isAuthenticated) return <Navigate to="/app" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== "admin") return <Navigate to="/app" replace />;
+  return <>{children}</>;
+}
+
+/** Redirects to /admin for admins, /app for regular users */
+function GuestOnly({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <LoadingSpinner />;
+  if (isAuthenticated) {
+    const redirectTo = user?.role === "admin" ? "/admin" : "/app";
+    return <Navigate to={redirectTo} replace />;
+  }
   return <>{children}</>;
 }
 
@@ -62,12 +77,12 @@ export default function App() {
           {/* Marketing / Landing Page */}
           <Route path="/" element={<MarketingPage />} />
 
-          {/* Auth Pages — redirect to /app if already logged in */}
+          {/* Auth Pages — redirect to appropriate dashboard */}
           <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
           <Route path="/signup" element={<GuestOnly><SignupPage /></GuestOnly>} />
 
-          {/* User App Routes — require authentication */}
-          <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
+          {/* User App Routes — admins redirected to /admin */}
+          <Route path="/app" element={<RequireUser><AppLayout /></RequireUser>}>
             <Route index element={<AppHome />} />
             <Route path="exams" element={<AppExams />} />
             <Route path="history" element={<AppHistory />} />
@@ -82,13 +97,14 @@ export default function App() {
             <Route path="settings" element={<AppSettings />} />
           </Route>
 
-          {/* Admin Routes */}
-          <Route path="/admin" element={<AdminLayout />}>
+          {/* Admin Routes — require admin role */}
+          <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
             <Route index element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="exams" element={<AdminExams />} />
             <Route path="questions" element={<AdminQuestions />} />
             <Route path="analytics" element={<AdminAnalytics />} />
+            <Route path="models/:modelName" element={<AdminModelBrowser />} />
           </Route>
         </Routes>
       </Suspense>

@@ -5,8 +5,9 @@ from uuid import UUID
 
 import jwt
 from app.config import settings
-from app.core.exceptions import UnauthorizedException
+from app.core.exceptions import UnauthorizedException, ForbiddenException
 from app.core.logging import logger
+from app.db.tables import User, UserRole
 from litestar.connection import ASGIConnection
 from litestar.handlers import BaseRouteHandler
 
@@ -16,12 +17,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 
-def create_access_token(user_id: UUID, email: str) -> str:
+def create_access_token(user_id: UUID, email: str, role: str = UserRole.USER.value) -> str:
     """Create a JWT access token."""
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "email": email,
+        "role": role,
         "type": "access",
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
@@ -59,6 +61,14 @@ def get_user_id_from_token(token: str) -> UUID:
     return UUID(payload["sub"])
 
 
+def get_user_info_from_token(token: str) -> tuple[UUID, str]:
+    """Extract user ID and role from a valid access token."""
+    payload = decode_token(token)
+    if payload.get("type") != "access":
+        raise UnauthorizedException(detail="Invalid token type")
+    return UUID(payload["sub"]), payload.get("role", UserRole.USER.value)
+
+
 def extract_token_from_header(authorization: str | None) -> str:
     """Extract the bearer token from the Authorization header."""
     if not authorization:
@@ -72,10 +82,28 @@ def extract_token_from_header(authorization: str | None) -> str:
 async def require_auth(connection: ASGIConnection, _: BaseRouteHandler) -> None:
     """Litestar guard that requires a valid JWT access token.
 
-    Sets ``connection.state.user_id`` on success.
+    Sets ``connection.state.user_id`` and ``connection.state.user_role`` on success.
     """
     authorization = connection.headers.get("authorization")
     token = extract_token_from_header(authorization)
-    user_id = get_user_id_from_token(token)
+    user_id, role = get_user_info_from_token(token)
     connection.state.user_id = user_id
+    connection.state.user_role = role
     logger.debug(f"Authenticated request for user {user_id}")
+
+
+async def require_admin(connection: ASGIConnection, _: BaseRouteHandler) -> None:
+    """Litestar guard that requires admin role.
+
+    Sets ``connection.state.user_id`` and ``connection.state.user_role`` on success.
+    """
+    authorization = connection.headers.get("authorization")
+    token = extract_token_from_header(authorization)
+    user_id, role = get_user_info_from_token(token)
+    
+    if role != UserRole.ADMIN.value:
+        raise ForbiddenException(detail="Admin access required")
+    
+    connection.state.user_id = user_id
+    connection.state.user_role = role
+    logger.debug(f"Admin request for user {user_id}")

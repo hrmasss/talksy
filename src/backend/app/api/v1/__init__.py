@@ -1,5 +1,6 @@
 """API v1 routes."""
 
+from app.api.v1.admin import AdminController
 from app.api.v1.conversations import ConversationController
 from app.api.v1.exams import ExamController
 from app.api.v1.ielts import IELTSController
@@ -17,6 +18,7 @@ api_v1_router = Router(
         PracticeController,
         IELTSController,
         SpeechController,
+        AdminController,
     ],
     tags=["API v1"],
 )

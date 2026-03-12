@@ -61,6 +61,7 @@ Repository = "https://github.com/hrmasss/talksy"
 
 [project.scripts]
 talksy = "dev:main"
+createsuperuser = "src.backend.app.cli.createsuperuser:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -58,6 +58,22 @@ export default function OnboardingPage() {
   // Test phase
   const [phase, setPhase] = useState<Phase>("setup");
   const [question, setQuestion] = useState<PlacementQuestion | null>(null);
+
+  const parsedQuestionData = question?.question_text ? (() => {
+    try {
+      if (question.question_text.trim().startsWith("{")) {
+        return JSON.parse(question.question_text);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  })() : null;
+
+  const displayQuestionText = parsedQuestionData?.question || parsedQuestionData?.question_text || (question?.question_text ?? "");
+  const displayOptions = (parsedQuestionData?.options && Array.isArray(parsedQuestionData.options)) ? parsedQuestionData.options : (question?.options || []);
+  const displayPassage = parsedQuestionData?.passage || (question as any)?.passage || null;
+
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<PlacementResult | null>(null);
@@ -340,17 +356,18 @@ export default function OnboardingPage() {
         {/* Question */}
         <div className="flex flex-1 items-start justify-center p-6">
           <div className="w-full max-w-2xl">
+            {displayPassage && (
+              <Card className="mb-4">
+                <CardContent className="prose prose-sm dark:prose-invert max-h-60 overflow-y-auto pt-4 text-sm">
+                  <div className="whitespace-pre-wrap">{displayPassage}</div>
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-lg leading-relaxed">
-                  <div className="flex-1">
-                    {question.question_text.split("\n").map((line, i) => (
-                      <span key={i}>
-                        {line}
-                        {i <
-                          question.question_text.split("\n").length - 1 && <br />}
-                      </span>
-                    ))}
+                  <div className="flex-1 whitespace-pre-wrap">
+                    {displayQuestionText}
                   </div>
                   {question.audio_url && (
                     <Button
@@ -398,15 +415,18 @@ export default function OnboardingPage() {
                 )}
 
                 {/* Options for MCQ */}
-                {question.options.length > 0 ? (
+                {displayOptions && displayOptions.length > 0 ? (
                   <div className="space-y-2">
-                    {question.options.map((opt, i) => (
+                    {displayOptions.map((opt: string, i: number) => (
                       <Button
                         key={i}
                         variant={answer === opt ? "default" : "outline"}
                         className="w-full justify-start text-left"
                         onClick={() => setAnswer(opt)}
                       >
+                        <span className="mr-2 font-medium text-muted-foreground">
+                          {String.fromCharCode(65 + i)}.
+                        </span>
                         {opt}
                       </Button>
                     ))}

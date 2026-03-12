@@ -370,8 +370,22 @@ class IELTSService:
 
     # ── Daily Study Plan ──────────────────────────────────────────
 
+    async def get_today_plan(self, user_id: UUID) -> dict[str, Any]:
+        """Return today's study plan without generating one if it doesn't exist."""
+        today = date.today()
+        existing = await DailyStudyPlan.select().where(
+            (DailyStudyPlan.user == user_id) &
+            (DailyStudyPlan.study_date == today)
+        ).first()
+        if not existing:
+            return {"error": "no_plan_today"}
+        activities = await StudyActivity.select().where(
+            StudyActivity.daily_plan == existing["id"]
+        ).order_by(StudyActivity.created_at)
+        return self._format_daily_plan(existing, activities)
+
     async def get_or_generate_daily_plan(self, user_id: UUID) -> dict[str, Any]:
-        """Get today's study plan, generating one if it doesn't exist."""
+        """Get today's study plan, generating one if it doesn't exist (idempotent per day)."""
         today = date.today()
 
         # Check for existing plan

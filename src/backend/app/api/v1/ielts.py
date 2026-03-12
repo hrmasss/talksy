@@ -417,16 +417,16 @@ class IELTSController(Controller):
     @get(
         "/study/daily/{user_id:uuid}",
         summary="Get Daily Study Plan",
-        description="Get today's personalized study plan. Generates one automatically "
-                    "if none exists for today.",
+        description="Get today's personalized study plan. Returns 404 if no plan "
+                    "has been generated yet. Use the generate endpoint to create one.",
         status_code=HTTP_200_OK,
     )
     async def get_daily_plan(self, user_id: UUID) -> DailyStudyPlanResponse:
-        result = await ielts_service.get_or_generate_daily_plan(user_id)
+        result = await ielts_service.get_today_plan(user_id)
         if result.get("error"):
-            if result["error"] == "user_not_found":
-                raise NotFoundException(detail="User not found")
-            raise AIServiceException(detail=result["error"])
+            if result["error"] == "no_plan_today":
+                raise NotFoundException(detail="No study plan for today. Use the generate endpoint to create one.")
+            raise NotFoundException(detail=result["error"])
         return DailyStudyPlanResponse(**result)
 
     @get(

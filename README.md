@@ -85,8 +85,19 @@ cp .env.example .env
 ```
 
 Key environment variables:
-- `OPENAI_API_KEY` - Required for AI features
-- `JWT_SECRET` - Change in production
+- `GEMINI_API_KEYS` - Required for AI features
+- `SECRET_KEY` - Change in production
+
+### Create Admin User
+
+```bash
+# From src/backend directory
+cd src/backend
+python -m app.cli.createsuperuser
+
+# Non-interactive mode
+python -m app.cli.createsuperuser -e admin@example.com -p "Admin123!" -n "Admin" --no-input
+```
 
 ### Running the Development Server
 
@@ -129,3 +140,4 @@ cd src/backend && python create_tables.py
 ## License
 
 MIT
+

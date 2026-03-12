@@ -75,7 +75,6 @@ export function useOnboardingGate() {
 // ── Nav items ────────────────────────────────────────────────
 const mainNavItems = [
   { path: "/app/dashboard", icon: RiDashboardLine, label: "Dashboard" },
-  { path: "/app", icon: RiMicLine, label: "Practice", exact: true },
   { path: "/app/mock-test", icon: RiFlashlightLine, label: "Mock Test", gated: true },
   { path: "/app/daily-study", icon: RiCalendarCheckLine, label: "Study", gated: true },
   { path: "/app/roadmap", icon: RiRoadMapLine, label: "Roadmap", gated: true },

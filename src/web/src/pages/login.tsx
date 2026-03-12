@@ -24,9 +24,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      const user = await login(email, password);
       toast.success("Signed in successfully.");
-      navigate("/app");
+      // Redirect admins to admin dashboard, regular users to app
+      const redirectTo = user?.role === "admin" ? "/admin" : "/app";
+      navigate(redirectTo);
     } catch (err: unknown) {
       const message = getUserFacingErrorMessage(err, "Login failed.");
       setError(message);

@@ -47,11 +47,13 @@ def _normalize_skill_profile(value: object) -> dict:
 
 def _user_to_response(user: dict) -> UserResponse:
     """Convert a user dict (from Piccolo) to UserResponse."""
+    from app.db.tables import UserRole
     return UserResponse(
         id=user["id"],
         email=user["email"],
         full_name=user["full_name"],
         avatar_url=user.get("avatar_url"),
+        role=user.get("role", UserRole.USER.value),
         is_active=user["is_active"],
         is_verified=user["is_verified"],
         target_exam=user.get("target_exam"),
@@ -91,7 +93,7 @@ class UserController(Controller):
         user_dict = await user_service.get_by_email(data.email)
         user_resp = _user_to_response(user_dict)
 
-        access_token = create_access_token(user_resp.id, user_resp.email)
+        access_token = create_access_token(user_resp.id, user_resp.email, user_resp.role)
         refresh_token = create_refresh_token(user_resp.id)
 
         return AuthResponse(
@@ -113,7 +115,7 @@ class UserController(Controller):
         user = await user_service.authenticate(data.email, data.password)
         user_resp = _user_to_response(user)
 
-        access_token = create_access_token(user_resp.id, user_resp.email)
+        access_token = create_access_token(user_resp.id, user_resp.email, user_resp.role)
         refresh_token = create_refresh_token(user_resp.id)
 
         return AuthResponse(
@@ -148,7 +150,7 @@ class UserController(Controller):
 
             raise UnauthorizedException(detail="User not found")
 
-        new_access = create_access_token(user_id, user["email"])
+        new_access = create_access_token(user_id, user["email"], user.get("role", "user"))
         new_refresh = create_refresh_token(user_id)
 
         return TokenResponse(

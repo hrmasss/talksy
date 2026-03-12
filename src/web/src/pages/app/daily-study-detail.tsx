@@ -214,7 +214,23 @@ export default function DailyStudyDetailPage() {
         {plan.activities.map((activity) => {
           const isSelected = selectedActivity?.id === activity.id;
           const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
-          const content = activity.content;
+          
+          let activityContent = activity.content;
+          if (typeof activityContent === "string") {
+            const trimmed = activityContent.trim();
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                if (parsed && typeof parsed === "object") {
+                  activityContent = parsed;
+                }
+              } catch {
+                // Not JSON, keep as string
+              }
+            }
+          }
+
+          const content = activityContent;
           const contentRecord = isContentRecord(content) ? content : null;
           const contentIsEmpty =
             content == null ||
@@ -267,9 +283,9 @@ export default function DailyStudyDetailPage() {
 
               {isSelected && (
                 <div className="border-t bg-muted/30 p-4 space-y-4">
-                  <div className="prose prose-sm dark:prose-invert">
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
                     {typeof content === "string" && (
-                      <p className="text-muted-foreground">{content}</p>
+                      <div className="text-muted-foreground whitespace-pre-wrap">{content}</div>
                     )}
                     {Array.isArray(content) && (
                       <ul className="list-disc pl-4 space-y-1">
@@ -295,18 +311,49 @@ export default function DailyStudyDetailPage() {
                       </ul>
                     )}
                     {contentRecord?.passage != null && (
-                      <blockquote className="border-l-2 pl-4 italic text-muted-foreground">
+                      <blockquote className="border-l-2 pl-4 italic text-muted-foreground whitespace-pre-wrap">
                         {String(contentRecord.passage)}
                       </blockquote>
                     )}
                     {Array.isArray(contentRecord?.questions) && (
                       <ul className="list-decimal pl-4 space-y-2">
                         {contentRecord.questions.map((q, i) => (
-                          <li key={i} className="text-foreground">{String(q)}</li>
+                          <li key={i} className="text-foreground">
+                            {typeof q === "object" && q !== null ? (
+                              <div className="space-y-2">
+                                <p className="font-medium">{String((q as any).question)}</p>
+                                {Array.isArray((q as any).options) && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                    {(q as any).options.map((opt: any, j: number) => (
+                                      <div key={j} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              String(q)
+                            )}
+                          </li>
                         ))}
                       </ul>
                     )}
-                    {Array.isArray(contentRecord?.options) && (
+                    {(contentRecord?.question != null || contentRecord?.options != null) && (
+                      <div className="mt-4 p-4 rounded-lg bg-background border border-border/50 shadow-sm space-y-4">
+                        {contentRecord.question != null && (
+                          <p className="font-medium text-foreground text-sm leading-relaxed">
+                            {String(contentRecord.question)}
+                          </p>
+                        )}
+                        {Array.isArray(contentRecord.options) && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            {contentRecord.options.map((opt, i) => (
+                              <div key={i} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(contentRecord?.options) && contentRecord?.question == null && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                         {contentRecord.options.map((opt, i) => (
                           <div key={i} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>

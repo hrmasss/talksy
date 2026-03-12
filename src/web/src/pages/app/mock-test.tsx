@@ -61,6 +61,23 @@ export default function MockTestPage() {
   const [selectedSection, setSelectedSection] = useState(initialSection);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState<MockTestQuestion | null>(null);
+
+  const parsedQuestionData = question?.question_text ? (() => {
+    try {
+      const trimmed = question.question_text.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        return JSON.parse(trimmed);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  })() : null;
+
+  const displayPassage = parsedQuestionData?.passage || question?.passage;
+  const displayQuestionText = parsedQuestionData?.question || parsedQuestionData?.question_text || (typeof parsedQuestionData === "string" ? parsedQuestionData : question?.question_text);
+  const displayOptions = (parsedQuestionData?.options && Array.isArray(parsedQuestionData.options)) ? parsedQuestionData.options : question?.options;
+
   const [report, setReport] = useState<MockTestReport | null>(null);
   const [answer, setAnswer] = useState("");
   const [transcribing, setTranscribing] = useState(false);
@@ -481,10 +498,14 @@ export default function MockTestPage() {
         </div>
 
         {/* Passage */}
-        {question.passage && (
+        {displayPassage && (
           <Card className="mb-4">
             <CardContent className="prose prose-sm dark:prose-invert max-h-60 overflow-y-auto pt-4 text-sm">
-              <div dangerouslySetInnerHTML={{ __html: question.passage }} />
+              {displayPassage.includes("<") ? (
+                <div dangerouslySetInnerHTML={{ __html: displayPassage }} />
+              ) : (
+                <div className="whitespace-pre-wrap">{displayPassage}</div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -492,7 +513,9 @@ export default function MockTestPage() {
         {/* Question */}
         <Card className="mb-4">
           <CardContent className="pt-6">
-            <p className="mb-4 text-sm leading-relaxed">{question.question_text}</p>
+            <div className="mb-4 text-sm font-medium leading-relaxed whitespace-pre-wrap">
+              {displayQuestionText}
+            </div>
 
             {/* Replay / Listen button for audio sections */}
             {isAudioSection && (
@@ -514,9 +537,9 @@ export default function MockTestPage() {
               </div>
             )}
 
-            {question.options && question.options.length > 0 ? (
+            {displayOptions && displayOptions.length > 0 ? (
               <div className="space-y-2">
-                {question.options.map((opt, i) => (
+                {displayOptions.map((opt: string, i: number) => (
                   <button
                     key={i}
                     onClick={() => setAnswer(opt)}

@@ -31,7 +31,7 @@ class MemoryCategory(str, Enum):
     PRONUNCIATION = "pronunciation"
 
     # Meta / behavioural
-    USER_ACTIVITY = "user_activity"       # general activity log
+    # USER_ACTIVITY = "user_activity"       # general activity log (commented out as requested)
     EXAM_RESULT = "exam_result"           # completed exam summaries
     STUDY_PREFERENCE = "study_preference" # preferred topics, schedule, etc.
     STRENGTH = "strength"                 # known strengths

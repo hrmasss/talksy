@@ -292,9 +292,12 @@ export default function DashboardPage() {
                   })}
                 </div>
               ) : (
-                <p className="py-4 text-center text-sm text-muted-foreground">
-                  No activities available yet. Complete the placement test to get started.
-                </p>
+                <div className="py-4 text-center">
+                  <p className="text-sm text-muted-foreground">No plan for today yet.</p>
+                  <Link to="/app/daily-study" className="mt-2 inline-block text-xs text-primary underline-offset-2 hover:underline">
+                    Generate today's plan →
+                  </Link>
+                </div>
               )}
             </CardContent>
           </Card>

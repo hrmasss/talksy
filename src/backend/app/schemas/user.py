@@ -50,6 +50,7 @@ class UserResponse(BaseSchema, TimestampMixin):
     email: str
     full_name: str
     avatar_url: str | None = None
+    role: str = "user"
     is_active: bool
     is_verified: bool
     target_exam: str | None = None

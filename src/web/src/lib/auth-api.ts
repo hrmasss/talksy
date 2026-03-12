@@ -11,6 +11,7 @@ export interface User {
   email: string;
   full_name: string;
   avatar_url?: string | null;
+  role: string;
   is_active: boolean;
   is_verified: boolean;
   target_exam?: string | null;
