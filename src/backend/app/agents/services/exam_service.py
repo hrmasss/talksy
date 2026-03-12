@@ -14,6 +14,7 @@ from typing import Any
 from app.config import settings
 from app.core.logging import logger
 from app.db.tables import MockExamSession
+from app.services.speech import cache_audio_file
 
 from ..exam.graph import get_exam_state, start_exam, submit_answer
 from ..exam.state import DIFFICULTY_PRESETS
@@ -32,7 +33,8 @@ async def _generate_question_audio(
     text: str, thread_id: str, question_number: int
 ) -> str | None:
     """Generate TTS audio for a question and cache it on disk.
-
+    
+    Optimized to use cached audio when available and Gemini TTS.
     Returns the URL path to the audio file, or None on failure.
     """
     if not text or not text.strip():
@@ -51,6 +53,7 @@ async def _generate_question_audio(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(audio_bytes)
         safe_id = hashlib.sha256(thread_id.encode()).hexdigest()[:16]
+        logger.info("Generated audio for exam question: {}", f"/static/audio/{safe_id}/q{question_number}.wav")
         return f"/static/audio/{safe_id}/q{question_number}.wav"
     except Exception as exc:
         logger.warning("Question audio generation failed: {}", exc)

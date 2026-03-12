@@ -273,9 +273,24 @@ class UserController(Controller):
         prefs = dict(prefs)
 
         if data.gemini_api_keys is not None:
-            # Filter out empty strings
-            clean_keys = [k.strip() for k in data.gemini_api_keys if k.strip()]
-            prefs["gemini_api_keys"] = clean_keys
+            # Get existing keys from preferences
+            existing_keys = prefs.get("gemini_api_keys", [])
+            
+            # Reconstruct full list by replacing masked placeholders with their originals
+            final_keys = []
+            for i, input_key in enumerate(data.gemini_api_keys):
+                input_key = input_key.strip()
+                if not input_key:
+                    continue
+                
+                # If the key provided matches the mask of the existing key at that position, keep the old key
+                if i < len(existing_keys) and _mask_key(existing_keys[i]) == input_key:
+                    final_keys.append(existing_keys[i])
+                else:
+                    # Otherwise, assume it's a new or modified key
+                    final_keys.append(input_key)
+            
+            prefs["gemini_api_keys"] = final_keys
 
         await User.update({"preferences": prefs}).where(User.id == user_id)
 

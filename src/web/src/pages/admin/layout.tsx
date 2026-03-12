@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/lib/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,7 @@ const navItems = [
 
 export default function AdminLayout() {
   const location = useLocation();
+  const { logout } = useAuth();
 
   return (
     <div className="flex min-h-screen bg-muted/30">
@@ -59,16 +61,15 @@ export default function AdminLayout() {
             ))}
           </nav>
           <div className="border-t border-border/50 p-2">
-            <Link to="/">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start gap-2 text-muted-foreground h-8"
-              >
-                <RiLogoutBoxLine className="h-4 w-4" />
-                Back to Site
-              </Button>
-            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-2 text-muted-foreground h-8"
+              onClick={() => logout()}
+            >
+              <RiLogoutBoxLine className="h-4 w-4" />
+              Sign Out
+            </Button>
           </div>
         </div>
       </aside>
@@ -76,7 +77,7 @@ export default function AdminLayout() {
       {/* Main */}
       <div className="flex flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
           <div className="flex items-center gap-4 lg:hidden">
             <Link to="/admin" className="text-base font-semibold tracking-tight">
               Talksy Admin
@@ -99,12 +100,13 @@ export default function AdminLayout() {
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <Link to="/">
-                <DropdownMenuItem className="gap-2 text-sm">
-                  <RiLogoutBoxLine className="h-4 w-4" />
-                  Sign Out
-                </DropdownMenuItem>
-              </Link>
+              <DropdownMenuItem
+                className="gap-2 text-sm text-destructive focus:text-destructive"
+                onClick={() => logout()}
+              >
+                <RiLogoutBoxLine className="h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>

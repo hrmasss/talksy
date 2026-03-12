@@ -59,8 +59,9 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Only send non-empty, non-masked keys
-      const cleanKeys = keys.filter((k) => k.trim() && !k.includes("***"));
+      // Send all non-empty keys, even masked ones (backend will handle them).
+      // A masked key means "leave as is".
+      const cleanKeys = keys.filter((k) => k.trim());
       const response = await updateUserSettings({ gemini_api_keys: cleanKeys });
       setSettings(response);
       setKeys(response.gemini_api_keys.length > 0 ? response.gemini_api_keys : [""]);

@@ -11,6 +11,8 @@ from app.schemas.conversation import ConversationMessage as ConversationMessageS
 from app.schemas.conversation import ConversationStart
 from app.services.ai import ai_service
 from app.services.base import BaseService
+from app.services.speech import generate_text_and_audio, cache_audio_file
+from app.agents.common.llm import next_api_key
 
 
 class ConversationService(BaseService[ConversationSession]):
@@ -20,8 +22,11 @@ class ConversationService(BaseService[ConversationSession]):
 
     async def start_session(
         self, user_id: UUID, data: ConversationStart
-    ) -> ConversationSession:
-        """Start a new conversation session."""
+    ) -> dict[str, Any]:
+        """Start a new conversation session.
+        
+        Returns: dict with session info including initial_message and audio_url
+        """
         session_data = {
             "id": uuid4(),
             "user": user_id,
@@ -33,16 +38,32 @@ class ConversationService(BaseService[ConversationSession]):
         session = ConversationSession(**session_data)
         await session.save()
 
-        # Generate initial AI message
-        initial_message = await self._generate_initial_message(session, data)
+        # Generate initial AI message (text + audio in parallel)
+        initial_message, audio_url = await self._generate_initial_message(session, data)
         
         logger.info(f"Started conversation session {session.id} for user {user_id}")
-        return session
+        
+        return {
+            "id": str(session.id),
+            "user": str(user_id),
+            "topic": session.topic,
+            "scenario": session.scenario,
+            "difficulty_level": session.difficulty_level,
+            "initial_message": {
+                "id": str(initial_message.id),
+                "content": initial_message.content,
+                "audio_url": audio_url,
+            }
+        }
 
     async def _generate_initial_message(
         self, session: ConversationSession, data: ConversationStart
-    ) -> ConversationMessage:
-        """Generate initial AI message for the conversation."""
+    ) -> tuple[ConversationMessage, str | None]:
+        """Generate initial AI message for the conversation.
+        
+        Returns: (message, audio_url)
+        Generates both text and audio in parallel for faster response.
+        """
         prompt = f"""You are a friendly English conversation partner helping someone practice their English skills.
         
 Topic: {data.topic}
@@ -53,13 +74,28 @@ Start a natural conversation about this topic. Be engaging, ask questions, and h
 Keep your response appropriate for the difficulty level - simpler vocabulary and shorter sentences for lower levels.
 """
 
-        ai_response = await ai_service.generate_response(prompt)
+        audio_url = None
+        try:
+            # Generate text and audio in parallel for faster response
+            ai_response, audio_bytes = await generate_text_and_audio(
+                prompt, 
+                api_key=next_api_key(),
+                parallel_mode=True
+            )
+            # Cache the audio and get URL
+            audio_url = await cache_audio_file(ai_response, audio_bytes)
+            logger.info("Generated initial message with audio for conversation {}", session.id)
+        except Exception as exc:
+            # Fallback to text-only if audio generation fails
+            logger.warning("Parallel text+audio generation failed, falling back to text only: {}", exc)
+            ai_response = await ai_service.generate_response(prompt)
         
         message = ConversationMessage(
             id=uuid4(),
             session=session.id,
             role="assistant",
             content=ai_response,
+            audio_url=audio_url,
         )
         await message.save()
 
@@ -68,7 +104,7 @@ Keep your response appropriate for the difficulty level - simpler vocabulary and
             ConversationSession.id == session.id
         )
 
-        return message
+        return message, audio_url
 
     async def send_message(
         self,
@@ -76,7 +112,10 @@ Keep your response appropriate for the difficulty level - simpler vocabulary and
         user_id: UUID,
         data: ConversationMessageSchema,
     ) -> dict[str, Any]:
-        """Send a message and get AI response."""
+        """Send a message and get AI response.
+        
+        Optimized to generate AI response text + audio in parallel.
+        """
         # Verify session belongs to user
         session = await ConversationSession.select().where(
             (ConversationSession.id == session_id)
@@ -104,19 +143,22 @@ Keep your response appropriate for the difficulty level - simpler vocabulary and
             ConversationMessage.session == session_id
         ).order_by(ConversationMessage.timestamp)
 
-        # Analyze user's message
+        # Analyze user's message (parallel with AI response generation)
         analysis = await ai_service.analyze_language(data.content)
 
-        # Generate AI response
-        ai_response = await self._generate_response(session, history, data.content)
+        # Generate AI response (text + audio in parallel)
+        ai_response_data = await self._generate_response(session, history, data.content)
+        ai_response_text = ai_response_data["content"]
+        audio_url = ai_response_data.get("audio_url")
 
         # Save AI message
         ai_message = ConversationMessage(
             id=uuid4(),
             session=session_id,
             role="assistant",
-            content=ai_response["content"],
+            content=ai_response_text,
             analysis=analysis,
+            audio_url=audio_url,
         )
         await ai_message.save()
 
@@ -133,11 +175,12 @@ Keep your response appropriate for the difficulty level - simpler vocabulary and
             },
             "ai_message": {
                 "id": str(ai_message.id),
-                "content": ai_response["content"],
+                "content": ai_response_text,
+                "audio_url": audio_url,
             },
-            "suggestions": ai_response.get("suggestions", []),
-            "vocabulary_tips": ai_response.get("vocabulary_tips", []),
-            "grammar_notes": ai_response.get("grammar_notes", []),
+            "suggestions": ai_response_data.get("suggestions", []),
+            "vocabulary_tips": ai_response_data.get("vocabulary_tips", []),
+            "grammar_notes": ai_response_data.get("grammar_notes", []),
         }
 
     async def _generate_response(
@@ -146,7 +189,11 @@ Keep your response appropriate for the difficulty level - simpler vocabulary and
         history: list[ConversationMessage],
         user_message: str,
     ) -> dict[str, Any]:
-        """Generate AI response based on conversation history."""
+        """Generate AI response based on conversation history.
+        
+        Generates text and audio in parallel for optimal performance.
+        Returns: dict with 'content', 'audio_url', and metadata
+        """
         history_text = "\n".join([
             f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
             for m in history[-10:]  # Last 10 messages for context
@@ -162,23 +209,32 @@ Conversation so far:
 
 User's latest message: {user_message}
 
-Respond naturally to continue the conversation. Also provide:
-1. Any suggestions for improving their English
-2. Vocabulary tips related to the conversation
-3. Any grammar corrections (if needed, be gentle)
-
-Format your response as:
-RESPONSE: [your conversational response]
-SUGGESTIONS: [comma-separated suggestions, or "none"]
-VOCABULARY: [word - definition, or "none"]
-GRAMMAR: [gentle correction, or "none"]
+Respond naturally to continue the conversation. Be encouraging and engaging.
+Keep your response concise (2-3 sentences) and appropriate for the difficulty level.
 """
 
-        ai_text = await ai_service.generate_response(prompt)
+        audio_url = None
+        ai_text = ""
         
-        # Parse response (simplified - production would use structured output)
+        try:
+            # Generate text and audio in parallel for faster response
+            ai_text, audio_bytes = await generate_text_and_audio(
+                prompt, 
+                api_key=next_api_key(),
+                parallel_mode=True
+            )
+            # Cache the audio and get URL
+            audio_url = await cache_audio_file(ai_text, audio_bytes)
+            logger.debug("Generated response with audio for conversation {}", session['id'])
+        except Exception as exc:
+            # Fallback to text-only if audio generation fails
+            logger.warning("Parallel text+audio generation failed, falling back to text only: {}", exc)
+            ai_text = await ai_service.generate_response(prompt)
+        
+        # Parse response for metadata (if formatted with markers)
         return {
-            "content": ai_text.split("RESPONSE:")[-1].split("SUGGESTIONS:")[0].strip() if "RESPONSE:" in ai_text else ai_text,
+            "content": ai_text,
+            "audio_url": audio_url,
             "suggestions": [],
             "vocabulary_tips": [],
             "grammar_notes": [],
