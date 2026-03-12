@@ -10,6 +10,7 @@ export interface PlacementQuestion {
   question_type: string;
   options: string[];
   time_limit_seconds?: number | null;
+  audio_url?: string | null;
 }
 
 export interface PlacementResult {
@@ -249,8 +250,8 @@ export function startPlacementTest(
     target_band_score?: number;
     exam_date?: string;
   }
-): Promise<PlacementQuestion> {
-  return requestJson<PlacementQuestion>(`/ielts/placement/start/${userId}`, {
+): Promise<PlacementQuestion | PlacementResult> {
+  return requestJson<PlacementQuestion | PlacementResult>(`/ielts/placement/start/${userId}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -261,7 +262,8 @@ export function startPlacementTest(
 
 export function submitPlacementAnswer(
   threadId: string,
-  answer: string
+  answer?: string,
+  audioBase64?: string
 ): Promise<PlacementQuestion | PlacementResult> {
   return requestJson<PlacementQuestion | PlacementResult>("/ielts/placement/answer", {
     method: "POST",
@@ -271,8 +273,17 @@ export function submitPlacementAnswer(
     body: JSON.stringify({
       thread_id: threadId,
       answer,
+      audio_base64: audioBase64,
     }),
   });
+}
+
+export function getActivePlacementTest(
+  userId: string
+): Promise<PlacementQuestion | PlacementResult | null> {
+  return requestJson<PlacementQuestion | PlacementResult | null>(
+    `/ielts/placement/active/${userId}`
+  );
 }
 
 export function startMockTest(

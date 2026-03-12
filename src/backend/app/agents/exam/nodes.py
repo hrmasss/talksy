@@ -67,7 +67,7 @@ async def initialise_exam_node(state: ExamState) -> dict:
         section.title(), difficulty, target_band,
     )
 
-    # ── Recall long-term memory for this user & section ──────────
+    # Recall long-term memory for this user & section
     memory_context = ""
     if user_id:
         try:
@@ -251,7 +251,7 @@ async def generate_question_node(state: ExamState) -> dict:
         "text": question_text,
     })
 
-    logger.info("Q{}/{} [Part {}] {}: {}…", qn+1, total, part, q_type, question_text[:80])
+    logger.info("Q{}/{} [Part {}] {}: {}...", qn + 1, total, part, q_type, question_text[:80])
 
     return {
         "messages": [response],
@@ -330,8 +330,8 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         )
         eval_data = evaluation.model_dump()
         eval_data["question_number"] = last["question_number"]
-    except Exception as exc:
-        logger.opt(exception=exc).warning("Structured eval failed")
+    except Exception:
+        logger.warning("Structured eval failed")
         # Fallback: try raw JSON parse
         try:
             raw = await llm.ainvoke([HumanMessage(content=eval_prompt)])
@@ -347,7 +347,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
     scores.append(score)
 
     avg = sum(scores) / len(scores)
-    logger.info("Q{} band: {} (avg so far: {:.1f})", last['question_number'], score, avg)
+    logger.info("Q{} band: {} (avg so far: {:.1f})", last["question_number"], score, avg)
 
     return {
         "candidate_answers": answers,
@@ -391,8 +391,8 @@ async def final_evaluation_node(state: ExamState) -> dict:
             [HumanMessage(content=prompt)]
         )
         data = report.model_dump()
-    except Exception as exc:
-        logger.opt(exception=exc).warning("Structured final eval failed, trying raw")
+    except Exception:
+        logger.warning("Structured final eval failed, trying raw")
         try:
             raw = await llm.ainvoke([HumanMessage(content=prompt)])
             match = re.search(r"\{.*\}", raw.content, re.DOTALL)
@@ -416,26 +416,8 @@ async def final_evaluation_node(state: ExamState) -> dict:
 
     logger.info("Final band score: {}", overall)
 
-    # ── Persist to long-term memory ──────────────────────────────
-    user_id = state.get("user_id", "")
-    if user_id:
-        try:
-            await memory_service.store_exam_result(
-                user_id=user_id,
-                section=section,
-                band_score=overall,
-                strengths=data.get("strengths"),
-                weaknesses=data.get("weaknesses"),
-                recommendations=data.get("recommendations"),
-                report_summary=report_md[:500] if report_md else "",
-                extra_metadata={
-                    "difficulty": difficulty,
-                    "target_band": target_band,
-                    "total_questions": len(answers),
-                },
-            )
-        except Exception as exc:
-            logger.opt(exception=exc).warning("Memory store after exam failed")
+    # Exam result persistence to long-term memory is scheduled in the API layer
+    # as a background task to avoid blocking the response.
 
     return {
         "candidate_answers": answers,

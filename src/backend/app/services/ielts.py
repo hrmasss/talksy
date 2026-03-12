@@ -6,6 +6,7 @@ with the database and AI agents.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import uuid
@@ -24,6 +25,7 @@ from app.db.tables import (
     StudyActivity,
     User,
 )
+from app.services.speech import speech_to_text, text_to_speech
 
 from ..agents.common.llm import get_llm
 from ..agents.daily_study.prompts import (
@@ -97,6 +99,33 @@ def _normalize_section_scores(value: Any) -> dict[str, float]:
 class IELTSService:
     """Manages the full IELTS preparation lifecycle."""
 
+    async def _resume_placement_test(
+        self, thread_id: str
+    ) -> dict[str, Any] | None:
+        """Return formatted placement state for an existing thread."""
+        if not thread_id:
+            return None
+        state = await get_placement_state(thread_id)
+        if not state:
+            return None
+        if state.get("status") == "completed":
+            await self._save_placement_results(thread_id, state)
+            return self._format_placement_result(state, thread_id)
+        return await self._format_placement_question(state, thread_id)
+
+    async def get_active_placement_test(self, user_id: UUID) -> dict[str, Any] | None:
+        """Return the most recent in-progress placement test for a user, if any."""
+        pt = await (
+            PlacementTest.select()
+            .where((PlacementTest.user == user_id) & (PlacementTest.status == "in_progress"))
+            .order_by(PlacementTest.started_at, ascending=False)
+            .first()
+        )
+        if not pt:
+            return None
+        return await self._resume_placement_test(pt.get("thread_id") or "")
+
+
     # ── User Profile ─────────────────────────────────────────────
 
     async def get_ielts_profile(self, user_id: UUID) -> dict[str, Any]:
@@ -130,6 +159,10 @@ class IELTSService:
         exam_date: date | None = None,
     ) -> dict[str, Any]:
         """Start the initial placement/diagnostic test."""
+        active = await self.get_active_placement_test(user_id)
+        if active:
+            return active
+
         thread_id = f"placement_{user_id}_{uuid.uuid4().hex[:8]}"
 
         # Save profile preferences
@@ -160,15 +193,29 @@ class IELTSService:
 
         result = await start_placement(initial_state, thread_id=thread_id)
 
-        return self._format_placement_question(result, thread_id)
+        return await self._format_placement_question(result, thread_id)
 
     async def submit_placement_answer(
         self,
         thread_id: str,
-        answer: str,
+        answer: str | None = None,
+        audio_base64: str | None = None,
     ) -> dict[str, Any]:
         """Submit an answer during the placement test."""
-        result = await submit_placement_answer(answer, thread_id=thread_id)
+        final_answer = answer or ""
+
+        # If audio is provided, use STT
+        if audio_base64:
+            try:
+                audio_bytes = base64.b64decode(audio_base64)
+                transcription = await speech_to_text(audio_bytes)
+                final_answer = transcription
+                logger.info("Transcribed placement answer: {}", final_answer)
+            except Exception as exc:
+                logger.error("STT failed for placement: {}", exc)
+                # Fallback to provided answer if any
+
+        result = await submit_placement_answer(final_answer, thread_id=thread_id)
 
         status = result.get("status", "in_progress")
 
@@ -177,7 +224,7 @@ class IELTSService:
             await self._save_placement_results(thread_id, result)
             return self._format_placement_result(result, thread_id)
 
-        return self._format_placement_question(result, thread_id)
+        return await self._format_placement_question(result, thread_id)
 
     async def get_placement_status(self, thread_id: str) -> dict[str, Any]:
         """Get current placement test status."""
@@ -187,7 +234,7 @@ class IELTSService:
 
         if state.get("status") == "completed":
             return self._format_placement_result(state, thread_id)
-        return self._format_placement_question(state, thread_id)
+        return await self._format_placement_question(state, thread_id)
 
     async def _save_placement_results(self, thread_id: str, result: dict[str, Any]) -> None:
         """Persist placement results to DB and update user profile."""
@@ -260,17 +307,44 @@ class IELTSService:
         )
         await snap.save()
 
-    def _format_placement_question(self, state: dict[str, Any], thread_id: str) -> dict[str, Any]:
+    async def _format_placement_question(self, state: dict[str, Any], thread_id: str) -> dict[str, Any]:
+        section = state.get("current_section", "listening")
+        question_text = state.get("current_question", "")
+        audio_url = None
+
+        # Generate audio for listening section
+        if section == "listening" and question_text:
+            try:
+                # Use first sentence if it's very long for the voice
+                tts_text = question_text
+                # Remove [Listening Scenario] tag for cleaner audio
+                tts_text = tts_text.replace("[Listening Scenario]", "").strip()
+
+                audio_bytes = await text_to_speech(tts_text)
+                filename = f"placement_{thread_id}_{state.get('question_number', 0)}.wav"
+                
+                # Check if static/audio exists, create if not
+                audio_root = settings.static_dir / "audio"
+                audio_root.mkdir(parents=True, exist_ok=True)
+                
+                audio_path = audio_root / filename
+                audio_path.write_bytes(audio_bytes)
+                audio_url = f"/static/audio/{filename}"
+                logger.info("Generated TTS for placement listening: {}", audio_url)
+            except Exception as exc:
+                logger.error("Failed to generate placement audio: {}", exc)
+
         return {
             "thread_id": thread_id,
             "status": state.get("status", "in_progress"),
-            "section": state.get("current_section", "listening"),
+            "section": section,
             "question_index": state.get("question_number", 0),
             "total_questions": state.get("total_questions", TOTAL_PLACEMENT_QUESTIONS),
-            "question_text": state.get("current_question", ""),
+            "question_text": question_text,
             "question_type": state.get("current_question_type", "multiple_choice"),
             "options": state.get("current_options", []),
             "time_limit_seconds": None,
+            "audio_url": audio_url,
         }
 
     def _format_placement_result(self, state: dict[str, Any], thread_id: str) -> dict[str, Any]:

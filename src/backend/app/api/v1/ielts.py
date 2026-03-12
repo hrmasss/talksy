@@ -30,7 +30,9 @@ from app.core.exceptions import AIServiceException
 from app.core.logging import logger
 from app.services.ielts import ielts_service
 from litestar import Controller, get, post, put
+from litestar.background_tasks import BackgroundTask
 from litestar.exceptions import NotFoundException
+from litestar.response import Response
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 
@@ -55,6 +57,56 @@ def _normalize_mock_question_type(question: object) -> str:
         if isinstance(value, str) and value.strip():
             return value
     return "discussion"
+
+
+async def _store_exam_result_background(
+    *,
+    thread_id: str,
+    section: str | None,
+    overall_band: float | None,
+    strengths: list[str] | None,
+    weaknesses: list[str] | None,
+    recommendations: list[str] | None,
+    report_md: str | None,
+) -> None:
+    if not section or overall_band is None:
+        return
+
+    from app.db.tables import MockExamSession
+    from app.memory.service import memory_service
+
+    session = await (
+        MockExamSession.select(
+            MockExamSession.user,
+            MockExamSession.difficulty,
+            MockExamSession.target_band,
+            MockExamSession.total_questions,
+        )
+        .where(MockExamSession.thread_id == thread_id)
+        .first()
+    )
+    if not session:
+        return
+
+    user_id = str(session["user"])
+    try:
+        await memory_service.store_exam_result(
+            user_id=user_id,
+            section=section,
+            band_score=overall_band,
+            strengths=strengths or [],
+            weaknesses=weaknesses or [],
+            recommendations=recommendations or [],
+            report_summary=report_md[:500] if report_md else "",
+            extra_metadata={
+                "difficulty": session.get("difficulty"),
+                "target_band": session.get("target_band"),
+                "total_questions": session.get("total_questions"),
+                "thread_id": thread_id,
+            },
+        )
+    except Exception as exc:
+        logger.opt(exception=exc).warning("Background memory store failed")
 
 
 class IELTSController(Controller):
@@ -122,6 +174,7 @@ class IELTSController(Controller):
         result = await ielts_service.submit_placement_answer(
             thread_id=data.thread_id,
             answer=data.answer,
+            audio_base64=data.audio_base64,
         )
         if result.get("status") == "completed":
             return PlacementResultResponse(**result)
@@ -139,6 +192,22 @@ class IELTSController(Controller):
         result = await ielts_service.get_placement_status(thread_id)
         if result.get("error"):
             raise NotFoundException(detail="Placement test not found")
+        if result.get("status") == "completed":
+            return PlacementResultResponse(**result)
+        return PlacementQuestionResponse(**result)
+
+    @get(
+        "/placement/active/{user_id:uuid}",
+        summary="Get Active Placement Test",
+        description="Get the user's currently in-progress placement test, if any.",
+        status_code=HTTP_200_OK,
+    )
+    async def get_active_placement_test(
+        self, user_id: UUID
+    ) -> PlacementQuestionResponse | PlacementResultResponse | None:
+        result = await ielts_service.get_active_placement_test(user_id)
+        if not result:
+            return None
         if result.get("status") == "completed":
             return PlacementResultResponse(**result)
         return PlacementQuestionResponse(**result)
@@ -228,7 +297,7 @@ class IELTSController(Controller):
             raise AIServiceException(detail=f"Failed to process answer: {exc}")
 
         if result.get("status") == "completed":
-            return MockTestReportResponse(
+            report = MockTestReportResponse(
                 thread_id=data.thread_id,
                 status="completed",
                 section=result.get("section"),
@@ -240,6 +309,17 @@ class IELTSController(Controller):
                 recommendations=result.get("recommendations", []),
                 final_report_markdown=result.get("final_report_markdown"),
             )
+            background = BackgroundTask(
+                _store_exam_result_background,
+                thread_id=data.thread_id,
+                section=report.section,
+                overall_band=report.overall_band,
+                strengths=report.strengths,
+                weaknesses=report.weaknesses,
+                recommendations=report.recommendations,
+                report_md=report.final_report_markdown,
+            )
+            return Response(report, background=background, status_code=HTTP_200_OK)
 
         return MockTestQuestionResponse(
             thread_id=data.thread_id,

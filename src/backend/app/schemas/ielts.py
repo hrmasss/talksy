@@ -46,7 +46,8 @@ class PlacementAnswerRequest(BaseSchema):
     """Submit an answer during placement test."""
 
     thread_id: str = Field(min_length=1)
-    answer: str = Field(min_length=1, max_length=10000)
+    answer: str | None = Field(default=None, max_length=10000)
+    audio_base64: str | None = None
 
 
 class PlacementQuestionResponse(BaseSchema):
@@ -61,6 +62,7 @@ class PlacementQuestionResponse(BaseSchema):
     question_type: str  # multiple_choice, fill_blank, essay, speaking
     options: list[str] = []
     time_limit_seconds: int | None = None
+    audio_url: str | None = None
 
 
 class PlacementResultResponse(BaseSchema):

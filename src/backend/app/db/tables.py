@@ -51,7 +51,7 @@ class QuestionType(str, Enum):
     SPEAKING = "speaking"
 
 
-class User(Table):
+class User(Table, tablename="users"):
     """User account table."""
 
     id = UUID(primary_key=True)

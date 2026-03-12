@@ -230,6 +230,12 @@ class UserController(Controller):
             raise NotFoundException(detail="User not found")
 
         prefs = user.get("preferences") or {}
+        if isinstance(prefs, str):
+            try:
+                prefs = json.loads(prefs)
+            except json.JSONDecodeError:
+                prefs = {}
+
         raw_keys: list[str] = prefs.get("gemini_api_keys", [])
         masked = [_mask_key(k) for k in raw_keys]
 
@@ -255,7 +261,14 @@ class UserController(Controller):
             from app.core.exceptions import NotFoundException
             raise NotFoundException(detail="User not found")
 
-        prefs = dict(user.get("preferences") or {})
+        prefs = user.get("preferences") or {}
+        if isinstance(prefs, str):
+            try:
+                prefs = json.loads(prefs)
+            except json.JSONDecodeError:
+                prefs = {}
+
+        prefs = dict(prefs)
 
         if data.gemini_api_keys is not None:
             # Filter out empty strings

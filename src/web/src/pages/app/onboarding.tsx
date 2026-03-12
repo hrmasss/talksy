@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,9 +15,12 @@ import {
   RiEdit2Line,
   RiMicLine,
   RiStarLine,
+  RiVolumeUpLine,
+  RiStopCircleLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import {
+  getActivePlacementTest,
   startPlacementTest,
   submitPlacementAnswer,
   type PlacementQuestion,
@@ -26,6 +29,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth-api";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { toast } from "sonner";
 
 const sectionIcons: Record<string, typeof RiHeadphoneLine> = {
@@ -56,8 +60,66 @@ export default function OnboardingPage() {
   const [phase, setPhase] = useState<Phase>("setup");
   const [question, setQuestion] = useState<PlacementQuestion | null>(null);
   const [answer, setAnswer] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<PlacementResult | null>(null);
+
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+
+  // Handle auto-playing audio for listening questions
+  useEffect(() => {
+    if (phase === "test" && question?.audio_url) {
+      const audio = new Audio(question.audio_url);
+      audio.play().catch((err) => {
+        console.warn("Auto-play blocked or failed:", err);
+      });
+    }
+  }, [phase, question?.audio_url, question?.question_index]);
+
+  useEffect(() => {
+    if (!user || user.onboarding_completed) {
+      if (!user?.onboarding_completed) setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const resume = async () => {
+      try {
+        const active = await getActivePlacementTest(user.id);
+        if (cancelled) return;
+
+        if (!active) {
+          setLoading(false);
+          return;
+        }
+
+        if (active.status === "completed") {
+          setResult(active as PlacementResult);
+          const latestUser = await getCurrentUser();
+          if (!cancelled) {
+            setUser(latestUser);
+            setPhase("result");
+            toast.success("Placement test already completed.");
+          }
+          return;
+        }
+
+        setQuestion(active as PlacementQuestion);
+        setPhase("test");
+        toast.success("Resumed your placement test.");
+      } catch (err) {
+        console.error("Failed to resume placement test:", err);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void resume();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, setUser]);
 
   const startTest = async () => {
     if (!user) return;
@@ -67,9 +129,17 @@ export default function OnboardingPage() {
         target_band_score: targetBand,
         exam_date: examDate || undefined,
       });
-      setQuestion(q);
-      setPhase("test");
-      toast.success("Placement test started.");
+      if (q.status === "completed") {
+        setResult(q as PlacementResult);
+        const latestUser = await getCurrentUser();
+        setUser(latestUser);
+        setPhase("result");
+        toast.success("Placement test completed successfully.");
+      } else {
+        setQuestion(q as PlacementQuestion);
+        setPhase("test");
+        toast.success("Placement test started.");
+      }
     } catch (err) {
       console.error("Failed to start placement test:", err);
       toast.error(
@@ -84,10 +154,30 @@ export default function OnboardingPage() {
   };
 
   const submitAnswer = async () => {
-    if (!question || !answer.trim()) return;
+    if (!question || (question.question_type !== 'speaking' && !answer.trim() && !isRecording)) return;
     setLoading(true);
     try {
-      const res = await submitPlacementAnswer(question.thread_id, answer.trim());
+      let audioBase64: string | undefined;
+      let finalAnswer = answer.trim() || undefined;
+      
+      if (isRecording) {
+        toast.info("Processing your speech...");
+        const blob = await stopRecording();
+        audioBase64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve(base64);
+          };
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      const res = await submitPlacementAnswer(
+        question.thread_id, 
+        finalAnswer,
+        audioBase64
+      );
       setAnswer("");
 
       if (res.status === "completed") {
@@ -119,6 +209,14 @@ export default function OnboardingPage() {
 
   // ── Setup Phase ──────────────────────────────────────────────
   if (phase === "setup") {
+    if (loading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background p-6">
+          <RiLoader4Line className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <div className="w-full max-w-lg">
@@ -245,17 +343,61 @@ export default function OnboardingPage() {
           <div className="w-full max-w-2xl">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg leading-relaxed">
-                  {question.question_text.split("\n").map((line, i) => (
-                    <span key={i}>
-                      {line}
-                      {i <
-                        question.question_text.split("\n").length - 1 && <br />}
-                    </span>
-                  ))}
+                <CardTitle className="flex items-center justify-between text-lg leading-relaxed">
+                  <div className="flex-1">
+                    {question.question_text.split("\n").map((line, i) => (
+                      <span key={i}>
+                        {line}
+                        {i <
+                          question.question_text.split("\n").length - 1 && <br />}
+                      </span>
+                    ))}
+                  </div>
+                  {question.audio_url && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="ml-4 h-10 w-10 shrink-0 rounded-full"
+                      onClick={() => {
+                        const audio = new Audio(question.audio_url!);
+                        audio.play();
+                      }}
+                    >
+                      <RiVolumeUpLine className="h-5 w-5" />
+                    </Button>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Speaking Section: Mic Control */}
+                {question.section === "speaking" && (
+                  <div className="flex flex-col items-center justify-center space-y-4 rounded-lg bg-muted/50 py-8">
+                    <div className="mb-2 text-center text-sm font-medium text-muted-foreground">
+                      {isRecording ? "Recording..." : "Click to start recording"}
+                    </div>
+                    <Button
+                      size="lg"
+                      variant={isRecording ? "destructive" : "default"}
+                      className={cn(
+                        "h-16 w-16 rounded-full",
+                        isRecording && "animate-pulse"
+                      )}
+                      onClick={() => (isRecording ? stopRecording() : startRecording())}
+                    >
+                      {isRecording ? (
+                        <RiStopCircleLine className="h-8 w-8" />
+                      ) : (
+                        <RiMicLine className="h-8 w-8" />
+                      )}
+                    </Button>
+                    <p className="px-4 text-center text-xs text-muted-foreground">
+                      {isRecording 
+                        ? "Speak clearly into your microphone" 
+                        : "Your speech will be automatically transcribed"}
+                    </p>
+                  </div>
+                )}
+
                 {/* Options for MCQ */}
                 {question.options.length > 0 ? (
                   <div className="space-y-2">
@@ -277,8 +419,8 @@ export default function OnboardingPage() {
                     placeholder={
                       question.question_type === "essay"
                         ? "Write your response here (100-150 words)..."
-                        : question.question_type === "speaking"
-                          ? "Type your spoken response here..."
+                        : question.section === "speaking"
+                          ? "Optional: Edit your transcription here..."
                           : "Type your answer..."
                     }
                     className="min-h-[120px]"
@@ -286,13 +428,17 @@ export default function OnboardingPage() {
                 )}
 
                 <div className="flex justify-between">
-                  <Button variant="ghost" size="sm" disabled>
-                    <RiArrowLeftLine className="mr-1 h-4 w-4" />
-                    Back
-                  </Button>
+                  {/* Status Indicator */}
+                  {question.section === "speaking" && isRecording && (
+                    <div className="flex items-center gap-2 text-xs font-medium text-destructive animate-pulse">
+                      <div className="h-2 w-2 rounded-full bg-destructive" />
+                      Live Recording
+                    </div>
+                  )}
+                  <div className="flex-1" />
                   <Button
                     onClick={submitAnswer}
-                    disabled={!answer.trim() || loading}
+                    disabled={(!answer.trim() && !isRecording && question.section !== 'speaking') || loading}
                     className="gap-2"
                   >
                     {loading ? (
