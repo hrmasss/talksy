@@ -539,11 +539,16 @@ class IELTSService:
         if not activity:
             return {"error": "activity_not_found"}
 
+        content = activity.get("content", {})
+        if isinstance(content, str):
+            import json
+            content = json.loads(content)
+            
         # AI evaluation
         prompt = get_activity_evaluation_prompt(
             section=activity["section"],
             activity_type=activity["activity_type"],
-            content=activity.get("content", {}),
+            content=content,
             user_response=user_response,
         )
 

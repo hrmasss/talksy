@@ -50,6 +50,7 @@ export default function DailyStudyDetailPage() {
     band_score: number | null;
     suggestions: string[];
     is_correct: boolean | null;
+    feedback_text?: string;
   } | null>(null);
 
   function isContentRecord(value: unknown): value is Record<string, unknown> {
@@ -169,8 +170,9 @@ export default function DailyStudyDetailPage() {
       const result = await submitActivityResponse(selectedActivity.id, response.trim());
       setFeedback({
         band_score: result.band_score ?? null,
-        suggestions: result.suggestions,
+        suggestions: result.suggestions || [],
         is_correct: result.is_correct ?? null,
+        feedback_text: typeof result.feedback?.feedback === 'string' ? result.feedback.feedback : undefined,
       });
       toast.success("Response submitted successfully.");
       if (plan) {
@@ -202,8 +204,9 @@ export default function DailyStudyDetailPage() {
       const result = await submitActivityResponse(selectedActivity.id, "Completed.");
       setFeedback({
         band_score: result.band_score ?? null,
-        suggestions: result.suggestions,
+        suggestions: result.suggestions || [],
         is_correct: result.is_correct ?? null,
+        feedback_text: typeof result.feedback?.feedback === 'string' ? result.feedback.feedback : undefined,
       });
       toast.success("Marked as completed.");
       if (plan) {
@@ -415,8 +418,11 @@ export default function DailyStudyDetailPage() {
                         <p className={cn("mb-3 text-sm font-medium", feedback.is_correct ? "text-emerald-600" : "text-amber-600")}>
                           {feedback.is_correct ? "Great job! That's correct." : "Good effort! Let's review the suggestions below."}
                         </p>
-                      )}
-                      {feedback.suggestions.length > 0 && (
+                      )}                        {feedback.feedback_text && (
+                          <div className="mb-4 text-sm text-foreground/90 whitespace-pre-wrap">
+                            {feedback.feedback_text}
+                          </div>
+                        )}                      {feedback.suggestions.length > 0 && (
                         <div className="space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggestions for improvement:</p>
                           <ul className="space-y-1.5">

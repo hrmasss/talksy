@@ -48,6 +48,45 @@ def _current_part(state: ExamState) -> int:
     return 1
 
 
+def _content_to_text(content: object) -> str:
+    """Normalize LangChain model content payloads to plain text.
+
+    Some providers return a list of blocks instead of a raw string.
+    """
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    parts.append(text)
+                continue
+
+            if isinstance(item, dict):
+                # Gemini / LangChain content blocks often expose text in one of
+                # these keys.
+                for key in ("text", "content", "value"):
+                    raw = item.get(key)
+                    if isinstance(raw, str):
+                        text = raw.strip()
+                        if text:
+                            parts.append(text)
+                        break
+
+        return "\n".join(parts).strip()
+
+    if isinstance(content, dict):
+        for key in ("text", "content", "value"):
+            raw = content.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+
+    return str(content).strip()
+
+
 # ============================================================================
 # 1. Initialise Exam
 # ============================================================================
@@ -69,6 +108,7 @@ async def initialise_exam_node(state: ExamState) -> dict:
 
     # Recall long-term memory for this user & section
     memory_context = ""
+    recent_exam_results_context = ""
     if user_id:
         try:
             memory_context = await memory_service.recall_for_exam(
@@ -78,6 +118,16 @@ async def initialise_exam_node(state: ExamState) -> dict:
         except Exception as exc:
             logger.warning("Memory recall skipped: {}", exc)
             memory_context = ""
+
+        try:
+            recent_exam_results_context = await memory_service.build_recent_exam_results_context(
+                user_id=user_id,
+                section=section,
+                limit=5,
+            )
+        except Exception as exc:
+            logger.warning("Recent exam memory fetch skipped: {}", exc)
+            recent_exam_results_context = ""
 
         # Log exam start as user activity
         try:
@@ -139,6 +189,15 @@ async def initialise_exam_node(state: ExamState) -> dict:
             "Use the above context to tailor questions to the user's level, "
             "focus on their weak areas, and avoid repeating topics they've "
             "already mastered.\n"
+        )
+
+    if recent_exam_results_context:
+        sys_prompt += (
+            "\n\n--- RECENT EXAM RESULTS (TOP 5, SAME SECTION) ---\n"
+            f"{recent_exam_results_context}\n"
+            "Generate new questions based on these past results: reinforce weak "
+            "areas, gradually increase challenge, and avoid repeating recently "
+            "used prompts.\n"
         )
 
     return {
@@ -223,7 +282,7 @@ async def generate_question_node(state: ExamState) -> dict:
         messages.append(HumanMessage(content="Please begin the exam and ask the first question."))
 
     response = await llm.ainvoke(messages)
-    question_text = response.content.strip()
+    question_text = _content_to_text(response.content)
 
     # Determine question type
     q_type = "discussion"

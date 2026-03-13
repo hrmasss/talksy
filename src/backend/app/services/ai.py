@@ -35,7 +35,7 @@ class AIService:
             messages.append(HumanMessage(content=prompt))
 
             response = await self.llm.ainvoke(messages)
-            return response.content
+            return self._content_to_text(response.content)
         except Exception as e:
             logger.error(f"Error generating LLM response: {e}")
             return self._mock_response(prompt)
@@ -48,6 +48,40 @@ class AIService:
             return "Your English is good! Keep practicing to improve further."
         else:
             return "I understand. Can you tell me more about that?"
+
+    @staticmethod
+    def _content_to_text(content: Any) -> str:
+        """Normalize model response content to plain text."""
+        if isinstance(content, str):
+            return content.strip()
+
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    text = item.strip()
+                    if text:
+                        parts.append(text)
+                    continue
+
+                if isinstance(item, dict):
+                    for key in ("text", "content", "value"):
+                        raw = item.get(key)
+                        if isinstance(raw, str):
+                            text = raw.strip()
+                            if text:
+                                parts.append(text)
+                            break
+
+            return "\n".join(parts).strip()
+
+        if isinstance(content, dict):
+            for key in ("text", "content", "value"):
+                raw = content.get(key)
+                if isinstance(raw, str) and raw.strip():
+                    return raw.strip()
+
+        return str(content).strip()
 
     async def analyze_language(self, text: str) -> dict[str, Any]:
         """Analyze language for grammar, vocabulary, etc."""
@@ -196,6 +230,57 @@ Be encouraging but accurate.
                 "explanation": "",
                 "tips": [],
             }
+
+    async def summarize_exam_result(
+        self,
+        *,
+        section: str,
+        overall_band: float,
+        strengths: list[str],
+        weaknesses: list[str],
+        recommendations: list[str],
+        report_markdown: str | None,
+    ) -> str:
+        """Generate a compact exam summary suitable for vector memory storage."""
+        if not self.llm:
+            return (
+                f"IELTS {section} result: overall band {overall_band:.1f}. "
+                f"Strengths: {', '.join(strengths) if strengths else 'N/A'}. "
+                f"Weaknesses: {', '.join(weaknesses) if weaknesses else 'N/A'}. "
+                f"Next focus: {', '.join(recommendations[:3]) if recommendations else 'Keep practicing consistently.'}"
+            )
+
+        prompt = f"""Summarize this IELTS exam result for long-term memory retrieval.
+
+Section: {section}
+Overall band: {overall_band}
+Strengths: {strengths}
+Weaknesses: {weaknesses}
+Recommendations: {recommendations}
+
+Full report markdown:
+{report_markdown or ''}
+
+Requirements:
+1. Output a concise paragraph (80-140 words).
+2. Include overall performance, strongest areas, weak areas, and next priorities.
+3. Keep factual and specific for future adaptive question generation.
+4. English only, no markdown headings, no bullet points.
+"""
+
+        try:
+            summary = await self.generate_response(prompt)
+            if summary:
+                return summary.strip()
+        except Exception as exc:
+            logger.warning("Exam summary generation failed: {}", exc)
+
+        return (
+            f"IELTS {section} result: overall band {overall_band:.1f}. "
+            f"Strengths: {', '.join(strengths) if strengths else 'N/A'}. "
+            f"Weaknesses: {', '.join(weaknesses) if weaknesses else 'N/A'}. "
+            f"Next focus: {', '.join(recommendations[:3]) if recommendations else 'Keep practicing consistently.'}"
+        )
 
 
 # Singleton instance

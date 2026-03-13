@@ -113,7 +113,7 @@ ACTIVITY DETAILS:
 - Section: {section}
 - Type: {activity_type}
 - Instructions: {content.get('instructions', '')}
-- Material: {content.get('material', '')[:500]}
+- Material: {str(content.get('material', ''))[:500]}
 - Questions: {content.get('questions', [])}
 
 STUDENT'S RESPONSE:

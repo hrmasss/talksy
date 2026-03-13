@@ -74,6 +74,7 @@ async def _store_exam_result_background(
 
     from app.db.tables import MockExamSession
     from app.memory.service import memory_service
+    from app.services.ai import ai_service
 
     session = await (
         MockExamSession.select(
@@ -90,6 +91,15 @@ async def _store_exam_result_background(
 
     user_id = str(session["user"])
     try:
+        summary_for_memory = await ai_service.summarize_exam_result(
+            section=section,
+            overall_band=overall_band,
+            strengths=strengths or [],
+            weaknesses=weaknesses or [],
+            recommendations=recommendations or [],
+            report_markdown=report_md,
+        )
+
         await memory_service.store_exam_result(
             user_id=user_id,
             section=section,
@@ -97,7 +107,7 @@ async def _store_exam_result_background(
             strengths=strengths or [],
             weaknesses=weaknesses or [],
             recommendations=recommendations or [],
-            report_summary=report_md[:500] if report_md else "",
+            report_summary=summary_for_memory,
             extra_metadata={
                 "difficulty": session.get("difficulty"),
                 "target_band": session.get("target_band"),

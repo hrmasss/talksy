@@ -680,6 +680,53 @@ class MemoryService:
             )
         return "\n".join(lines)
 
+    async def get_recent_exam_results(
+        self,
+        *,
+        user_id: str,
+        section: str,
+        limit: int = 5,
+    ) -> list[MemoryEntry]:
+        """Return latest exam-result memories for a section (type) and user."""
+        entries = await self.get_by_category(
+            user_id=user_id,
+            category=MemoryCategory.EXAM_RESULT,
+            limit=max(limit * 4, 20),
+        )
+
+        section_key = section.strip().lower()
+        filtered = [
+            entry
+            for entry in entries
+            if str(entry.metadata.get("section", "")).strip().lower() == section_key
+        ]
+
+        filtered.sort(key=lambda e: e.created_at, reverse=True)
+        return filtered[:limit]
+
+    async def build_recent_exam_results_context(
+        self,
+        *,
+        user_id: str,
+        section: str,
+        limit: int = 5,
+    ) -> str:
+        """Build a compact context block from top recent section exam results."""
+        recent = await self.get_recent_exam_results(
+            user_id=user_id,
+            section=section,
+            limit=limit,
+        )
+        if not recent:
+            return ""
+
+        lines = [f"## Top {len(recent)} Recent {section.title()} Exam Results"]
+        for idx, item in enumerate(recent, start=1):
+            band = item.metadata.get("band_score", "?")
+            detail = item.content.strip().replace("\n", " ")
+            lines.append(f"{idx}. Band {band}: {detail}")
+        return "\n".join(lines)
+
 
 # Module-level singleton
 memory_service = MemoryService()
