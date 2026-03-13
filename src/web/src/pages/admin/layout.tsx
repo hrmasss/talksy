@@ -15,6 +15,7 @@ import {
   RiBookLine,
   RiQuestionLine,
   RiLineChartLine,
+  RiFileUploadLine,
   RiSettingsLine,
   RiLogoutBoxLine,
 } from "@remixicon/react";
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/admin/exams", icon: RiBookLine, label: "Exams" },
   { path: "/admin/questions", icon: RiQuestionLine, label: "Questions" },
   { path: "/admin/analytics", icon: RiLineChartLine, label: "Analytics" },
+  { path: "/admin/documents", icon: RiFileUploadLine, label: "Documents" },
 ];
 
 export default function AdminLayout() {
@@ -120,7 +122,7 @@ export default function AdminLayout() {
       {/* Mobile Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 border-t border-border/50 bg-background lg:hidden">
         <div className="flex items-center justify-around py-2">
-          {navItems.slice(0, 4).map((item) => (
+          {navItems.slice(0, 5).map((item) => (
             <Link key={item.path} to={item.path}>
               <Button
                 variant="ghost"

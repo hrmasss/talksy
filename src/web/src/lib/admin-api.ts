@@ -78,6 +78,72 @@ export interface UpdateUserPayload {
   timezone?: string;
 }
 
+export interface AdminDocumentUploadResponse {
+  message: string;
+  collection_name?: string;
+}
+
+export interface AdminDocumentSearchResult {
+  content: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type KnowledgeBaseCategory = "exam" | "daily_study" | "roadmap" | "custom";
+
+export type KnowledgeBaseExamSection =
+  | "speaking"
+  | "writing"
+  | "reading"
+  | "listening";
+
+export interface KnowledgeBaseCategoryOption {
+  value: KnowledgeBaseCategory;
+  label: string;
+  requiresExamSection?: boolean;
+}
+
+export interface KnowledgeBaseExamSectionOption {
+  value: KnowledgeBaseExamSection;
+  label: string;
+}
+
+export const KNOWLEDGE_BASE_CATEGORY_OPTIONS: KnowledgeBaseCategoryOption[] = [
+  { value: "exam", label: "Exam", requiresExamSection: true },
+  { value: "daily_study", label: "Daily Study" },
+  { value: "roadmap", label: "Roadmap" },
+  { value: "custom", label: "Custom Collection" },
+];
+
+export const KNOWLEDGE_BASE_EXAM_SECTION_OPTIONS: KnowledgeBaseExamSectionOption[] = [
+  { value: "speaking", label: "Speaking" },
+  { value: "writing", label: "Writing" },
+  { value: "reading", label: "Reading" },
+  { value: "listening", label: "Listening" },
+];
+
+function slugifyCollectionPart(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+export function buildKnowledgeBaseCollectionName(params: {
+  category: KnowledgeBaseCategory;
+  examSection?: KnowledgeBaseExamSection;
+  customCollectionName?: string;
+}): string {
+  const { category, examSection, customCollectionName } = params;
+
+  if (category === "custom") {
+    return slugifyCollectionPart(customCollectionName || "") || "knowledge_base";
+  }
+
+  if (category === "exam") {
+    const section = examSection || "speaking";
+    return `kb_exam_${slugifyCollectionPart(section)}`;
+  }
+
+  return `kb_${slugifyCollectionPart(category)}`;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Dashboard & Stats
 // ─────────────────────────────────────────────────────────────────
@@ -221,4 +287,55 @@ export function resetUserPassword(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
   });
+}
+
+export function uploadAdminDocument(
+  params: {
+    collectionName?: string;
+    category?: KnowledgeBaseCategory;
+    examSection?: KnowledgeBaseExamSection;
+    customCollectionName?: string;
+  },
+  file: File
+): Promise<AdminDocumentUploadResponse> {
+  const form = new FormData();
+  form.append("data", file);
+
+  const queryParams = new URLSearchParams();
+  if (params.collectionName) queryParams.set("collection_name", params.collectionName);
+  if (params.category) queryParams.set("category", params.category);
+  if (params.examSection) queryParams.set("exam_section", params.examSection);
+  if (params.customCollectionName)
+    queryParams.set("custom_collection_name", params.customCollectionName);
+
+  const query = queryParams.toString();
+  return requestJson<AdminDocumentUploadResponse>(`/admin/documents/upload?${query}`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function searchAdminDocuments(
+  params: {
+    collectionName?: string;
+    category?: KnowledgeBaseCategory;
+    examSection?: KnowledgeBaseExamSection;
+    customCollectionName?: string;
+  },
+  query: string,
+  limit = 5
+): Promise<AdminDocumentSearchResult[]> {
+  const searchParams = new URLSearchParams({
+    query,
+    limit: String(limit),
+  });
+  if (params.collectionName) searchParams.set("collection_name", params.collectionName);
+  if (params.category) searchParams.set("category", params.category);
+  if (params.examSection) searchParams.set("exam_section", params.examSection);
+  if (params.customCollectionName)
+    searchParams.set("custom_collection_name", params.customCollectionName);
+
+  const search = searchParams.toString();
+
+  return requestJson<AdminDocumentSearchResult[]>(`/admin/documents/search?${search}`);
 }

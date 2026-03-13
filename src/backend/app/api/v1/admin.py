@@ -24,9 +24,20 @@ from app.db.tables import (
 )
 from app.schemas.base import BaseSchema
 from app.services.user import UserService
-from litestar import Controller, Request, delete, get, patch, post
+from litestar import Controller, Request, Response, delete, get, patch, post
+from litestar.background_tasks import BackgroundTask
+from litestar.datastructures import UploadFile
+from litestar.enums import RequestEncodingType
+from litestar.params import Body
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import Field
+
+from app.services.document import (
+    async_process_pdf_and_store_with_metadata,
+    build_collection_metadata,
+    resolve_collection_suffix,
+    retrieve_from_collection,
+)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -636,3 +647,80 @@ class AdminController(Controller):
         logger.info(f"Admin reset password for user {user_id}")
         
         return {"message": "Password reset successfully"}
+    @post(
+        "/documents/upload",
+        summary="Upload PDF to Vector DB",
+        description="Upload a PDF document, extract chunks, and build embeddings into a vector collection.",
+        status_code=HTTP_201_CREATED,
+    )
+    async def upload_document(
+        self,
+        collection_name: str | None = None,
+        category: str | None = None,
+        exam_section: str | None = None,
+        custom_collection_name: str | None = None,
+        data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
+    ) -> Response:
+        """Upload and process PDF for vector db."""
+        content = await data.read()
+
+        try:
+            collection_suffix = resolve_collection_suffix(
+                collection_name=collection_name,
+                category=category,
+                exam_section=exam_section,
+                custom_collection_name=custom_collection_name,
+            )
+        except ValueError as exc:
+            raise BadRequestException(detail=str(exc)) from exc
+
+        metadata_tags = build_collection_metadata(
+            collection_suffix=collection_suffix,
+            category=category,
+            exam_section=exam_section,
+            source_file_name=data.filename,
+        )
+
+        logger.info(f"Queuing document upload to collection '{collection_suffix}' in background")
+        
+        return Response(
+            content={
+                "message": "Document processing started in background",
+                "collection_name": collection_suffix,
+            },
+            status_code=HTTP_201_CREATED,
+            background=BackgroundTask(
+                async_process_pdf_and_store_with_metadata,
+                content,
+                collection_suffix,
+                metadata_tags,
+            ),
+        )
+
+    @get(
+        "/documents/search",
+        summary="Search Collection",
+        description="Retrieve chunks from a specific custom collection.",
+        status_code=HTTP_200_OK,
+    )
+    async def search_document(
+        self,
+        query: str,
+        collection_name: str | None = None,
+        category: str | None = None,
+        exam_section: str | None = None,
+        custom_collection_name: str | None = None,
+        limit: int = 5,
+    ) -> list[dict]:
+        """Search across custom documents collection."""
+        try:
+            collection_suffix = resolve_collection_suffix(
+                collection_name=collection_name,
+                category=category,
+                exam_section=exam_section,
+                custom_collection_name=custom_collection_name,
+            )
+            results = retrieve_from_collection(collection_suffix, query, limit)
+            return results
+        except Exception as e:
+            raise BadRequestException(detail=f"Error retrieving answers: {e!s}") from e

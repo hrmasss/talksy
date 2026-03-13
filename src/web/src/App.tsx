@@ -30,6 +30,7 @@ const AdminExams = lazy(() => import("@/pages/admin/exams"));
 const AdminQuestions = lazy(() => import("@/pages/admin/questions"));
 const AdminAnalytics = lazy(() => import("@/pages/admin/analytics"));
 const AdminModelBrowser = lazy(() => import("@/pages/admin/model-browser"));
+const AdminDocuments = lazy(() => import("@/pages/admin/documents"));
 
 function LoadingSpinner() {
   return (
@@ -104,6 +105,7 @@ export default function App() {
             <Route path="exams" element={<AdminExams />} />
             <Route path="questions" element={<AdminQuestions />} />
             <Route path="analytics" element={<AdminAnalytics />} />
+            <Route path="documents" element={<AdminDocuments />} />
             <Route path="models/:modelName" element={<AdminModelBrowser />} />
           </Route>
         </Routes>

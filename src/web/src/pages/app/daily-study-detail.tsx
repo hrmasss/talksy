@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,6 +54,79 @@ export default function DailyStudyDetailPage() {
 
   function isContentRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  function formatContentLabel(key: string): string {
+    return key
+      .replace(/_/g, " ")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^./, (char) => char.toUpperCase());
+  }
+
+  function isAnswerLikeKey(key: string): boolean {
+    const normalized = key.toLowerCase();
+    return (
+      normalized === "answer" ||
+      normalized === "answers" ||
+      normalized === "correct_answer" ||
+      normalized === "correct_answers" ||
+      normalized === "sample_answer" ||
+      normalized === "model_answer"
+    );
+  }
+
+  function renderContentValue(value: unknown, keyPrefix: string): ReactNode {
+    if (value == null) {
+      return <span className="text-muted-foreground">-</span>;
+    }
+
+    if (typeof value === "string") {
+      return <p className="text-muted-foreground whitespace-pre-wrap">{value}</p>;
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+      return <p className="text-muted-foreground">{String(value)}</p>;
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return <span className="text-muted-foreground">[]</span>;
+      }
+
+      return (
+        <ul className="list-disc pl-4 space-y-1">
+          {value.map((item, index) => (
+            <li key={`${keyPrefix}-${index}`} className="text-muted-foreground">
+              {renderContentValue(item, `${keyPrefix}-${index}`)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (isContentRecord(value)) {
+      const entries = Object.entries(value).filter(([childKey]) => !isAnswerLikeKey(childKey));
+      if (entries.length === 0) {
+        return <span className="text-muted-foreground">{"{}"}</span>;
+      }
+
+      return (
+        <div className="space-y-2 rounded border border-border/50 bg-background p-3">
+          {entries.map(([childKey, childValue]) => (
+            <div key={`${keyPrefix}-${childKey}`} className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {formatContentLabel(childKey)}
+              </p>
+              {renderContentValue(childValue, `${keyPrefix}.${childKey}`)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return <p className="text-muted-foreground">{String(value)}</p>;
   }
 
   useEffect(() => {
@@ -232,11 +305,14 @@ export default function DailyStudyDetailPage() {
 
           const content = activityContent;
           const contentRecord = isContentRecord(content) ? content : null;
+          const visibleContentEntries = contentRecord
+            ? Object.entries(contentRecord).filter(([key]) => !isAnswerLikeKey(key))
+            : [];
           const contentIsEmpty =
             content == null ||
             (typeof content === "string" && content.trim().length === 0) ||
             (Array.isArray(content) && content.length === 0) ||
-            (contentRecord != null && Object.keys(contentRecord).length === 0);
+            (contentRecord != null && visibleContentEntries.length === 0);
           
           return (
             <div
@@ -294,69 +370,28 @@ export default function DailyStudyDetailPage() {
                         ))}
                       </ul>
                     )}
-                    {contentRecord?.instructions != null && (
-                      <p className="font-medium text-foreground">{String(contentRecord.instructions)}</p>
-                    )}
-                    {contentRecord?.prompt != null && (
-                      <p className="text-muted-foreground">{String(contentRecord.prompt)}</p>
-                    )}
-                    {typeof contentRecord?.material === "string" && (
-                      <p className="text-muted-foreground">{contentRecord.material}</p>
-                    )}
-                    {Array.isArray(contentRecord?.material) && (
-                      <ul className="list-disc pl-4 space-y-1">
-                        {contentRecord.material.map((item, i) => (
-                          <li key={i} className="text-muted-foreground">{String(item)}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {contentRecord?.passage != null && (
-                      <blockquote className="border-l-2 pl-4 italic text-muted-foreground whitespace-pre-wrap">
-                        {String(contentRecord.passage)}
-                      </blockquote>
-                    )}
-                    {Array.isArray(contentRecord?.questions) && (
-                      <ul className="list-decimal pl-4 space-y-2">
-                        {contentRecord.questions.map((q, i) => (
-                          <li key={i} className="text-foreground">
-                            {typeof q === "object" && q !== null ? (
-                              <div className="space-y-2">
-                                <p className="font-medium">{String((q as any).question)}</p>
-                                {Array.isArray((q as any).options) && (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                                    {(q as any).options.map((opt: any, j: number) => (
-                                      <div key={j} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                    {visibleContentEntries.length > 0 && (
+                      <div className="space-y-3">
+                        {visibleContentEntries.map(([key, value]) => (
+                          <div key={key} className="space-y-1">
+                            {typeof value === "string" ||
+                            typeof value === "number" ||
+                            typeof value === "boolean" ? (
+                              <p className="text-muted-foreground whitespace-pre-wrap">
+                                <span className="font-semibold text-foreground">
+                                  {formatContentLabel(key)}:
+                                </span>{" "}
+                                {String(value)}
+                              </p>
                             ) : (
-                              String(q)
+                              <>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {formatContentLabel(key)}:
+                                </p>
+                                {renderContentValue(value, key)}
+                              </>
                             )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {(contentRecord?.question != null || contentRecord?.options != null) && (
-                      <div className="mt-4 p-4 rounded-lg bg-background border border-border/50 shadow-sm space-y-4">
-                        {contentRecord.question != null && (
-                          <p className="font-medium text-foreground text-sm leading-relaxed">
-                            {String(contentRecord.question)}
-                          </p>
-                        )}
-                        {Array.isArray(contentRecord.options) && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                            {contentRecord.options.map((opt, i) => (
-                              <div key={i} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>
-                            ))}
                           </div>
-                        )}
-                      </div>
-                    )}
-                    {Array.isArray(contentRecord?.options) && contentRecord?.question == null && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        {contentRecord.options.map((opt, i) => (
-                          <div key={i} className="text-xs p-2 rounded border bg-background shadow-sm hover:border-primary/30 transition-colors uppercase tracking-tight">{String(opt)}</div>
                         ))}
                       </div>
                     )}
