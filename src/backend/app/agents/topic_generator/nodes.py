@@ -13,10 +13,10 @@ from app.core.logging import logger
 from ..common.llm import get_llm
 from .models import (
     LevelAssessment,
-    ListeningTopic,
-    ReadingTopic,
-    SpeakingTopic,
-    WritingTopic,
+    ListeningTopicList,
+    ReadingTopicList,
+    SpeakingTopicList,
+    WritingTopicList,
 )
 from .prompts import (
     ASSESS_LEVEL_PROMPT,
@@ -111,14 +111,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
 
     if section_focus in (None, "speaking"):
         async def _speaking():
-            # We only really need speaking_topics, so use a minimal model
-            # instead of the full TopicSet and ignore the rest.
-            from pydantic import BaseModel, Field
-
-            class SpeakingList(BaseModel):
-                topics: list[SpeakingTopic] = Field(default_factory=list)
-
-            s_llm2 = llm.with_structured_output(SpeakingList)
+            s_llm2 = llm.with_structured_output(SpeakingTopicList)
             r = await s_llm2.ainvoke(
                 GENERATE_SPEAKING_TOPICS_PROMPT.format_messages(**common)
             )
@@ -127,12 +120,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
 
     if section_focus in (None, "writing"):
         async def _writing():
-            from pydantic import BaseModel, Field
-
-            class WritingList(BaseModel):
-                topics: list[WritingTopic] = Field(default_factory=list)
-
-            w_llm = llm.with_structured_output(WritingList)
+            w_llm = llm.with_structured_output(WritingTopicList)
             r = await w_llm.ainvoke(
                 GENERATE_WRITING_TOPICS_PROMPT.format_messages(
                     exam_variant=exam_variant, **common
@@ -143,12 +131,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
 
     if section_focus in (None, "reading"):
         async def _reading():
-            from pydantic import BaseModel, Field
-
-            class ReadingList(BaseModel):
-                topics: list[ReadingTopic] = Field(default_factory=list)
-
-            r_llm = llm.with_structured_output(ReadingList)
+            r_llm = llm.with_structured_output(ReadingTopicList)
             r = await r_llm.ainvoke(
                 GENERATE_READING_TOPICS_PROMPT.format_messages(**common)
             )
@@ -157,12 +140,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
 
     if section_focus in (None, "listening"):
         async def _listening():
-            from pydantic import BaseModel, Field
-
-            class ListeningList(BaseModel):
-                topics: list[ListeningTopic] = Field(default_factory=list)
-
-            l_llm = llm.with_structured_output(ListeningList)
+            l_llm = llm.with_structured_output(ListeningTopicList)
             r = await l_llm.ainvoke(
                 GENERATE_LISTENING_TOPICS_PROMPT.format_messages(**common)
             )

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -26,8 +25,13 @@ from app.db.tables import (
     User,
 )
 from app.services.speech import speech_to_text, text_to_speech
+from langchain_core.messages import HumanMessage
 
 from ..agents.common.llm import get_llm
+from ..agents.daily_study.models import (
+    DailyStudyPlanModel,
+    StudyActivityFeedbackModel,
+)
 from ..agents.daily_study.prompts import (
     get_activity_evaluation_prompt,
     get_daily_study_plan_prompt,
@@ -480,7 +484,10 @@ class IELTSService:
 
         llm = get_llm(model=settings.gemini_model, temperature=0.7)
         try:
-            raw = await llm.ainvoke([{"role": "user", "content": prompt}])
+            structured_llm = llm.with_structured_output(DailyStudyPlanModel)
+            plan_output: DailyStudyPlanModel = await structured_llm.ainvoke(
+                [HumanMessage(content=prompt)]
+            )
         except Exception as exc:
             logger.opt(exception=exc).error(
                 "Daily study plan LLM call failed (user_id={})",
@@ -488,13 +495,7 @@ class IELTSService:
             )
             return {"error": "daily_plan_generation_failed"}
 
-        try:
-            match = re.search(r"\{.*\}", raw.content, re.DOTALL)
-            plan_data = json.loads(match.group()) if match else {}
-        except Exception:
-            plan_data = {"activities": [], "rationale": "Failed to generate plan"}
-
-        activities_data = plan_data.get("activities", [])
+        activities_data = [a.model_dump() for a in plan_output.activities]
 
         # Save plan to DB
         plan_id = uuid.uuid4()
@@ -504,7 +505,7 @@ class IELTSService:
             study_date=study_date,
             activities=[a.get("title", "") for a in activities_data],
             total_count=len(activities_data),
-            ai_rationale=plan_data.get("rationale", ""),
+            ai_rationale=plan_output.rationale,
         )
         await plan.save()
 
@@ -553,13 +554,16 @@ class IELTSService:
         )
 
         llm = get_llm(model=settings.gemini_model, temperature=0.3)
-        raw = await llm.ainvoke([{"role": "user", "content": prompt}])
 
         try:
-            match = re.search(r"\{.*\}", raw.content, re.DOTALL)
-            feedback = json.loads(match.group()) if match else {}
-        except Exception:
-            feedback = {"band_score": 5.0, "feedback": "Evaluation completed.", "suggestions": []}
+            structured_llm = llm.with_structured_output(StudyActivityFeedbackModel)
+            feedback_model: StudyActivityFeedbackModel = await structured_llm.ainvoke(
+                [HumanMessage(content=prompt)]
+            )
+            feedback = feedback_model.model_dump()
+        except Exception as exc:
+            logger.warning("Study activity structured feedback failed: {}", exc)
+            feedback = StudyActivityFeedbackModel().model_dump()
 
         # Save to DB
         await StudyActivity.update({

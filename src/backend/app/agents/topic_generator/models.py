@@ -126,3 +126,27 @@ class TopicSet(BaseModel):
         default="",
         description="Short guidance on how to use these topics effectively",
     )
+
+
+class SpeakingTopicList(BaseModel):
+    """Structured list wrapper for speaking topics."""
+
+    topics: list[SpeakingTopic] = Field(default_factory=list)
+
+
+class WritingTopicList(BaseModel):
+    """Structured list wrapper for writing topics."""
+
+    topics: list[WritingTopic] = Field(default_factory=list)
+
+
+class ReadingTopicList(BaseModel):
+    """Structured list wrapper for reading topics."""
+
+    topics: list[ReadingTopic] = Field(default_factory=list)
+
+
+class ListeningTopicList(BaseModel):
+    """Structured list wrapper for listening topics."""
+
+    topics: list[ListeningTopic] = Field(default_factory=list)
