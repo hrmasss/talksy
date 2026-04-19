@@ -1,7 +1,6 @@
 """Main Litestar application setup."""
 
 import asyncio
-from pathlib import Path
 
 from app import __version__
 from app.api.health import HealthController
@@ -96,7 +95,7 @@ API requests are rate-limited to ensure fair usage. Contact support for higher l
     ]
     
     # Static files for frontend (will be built by Vite)
-    static_dir = Path(__file__).parent.parent.parent / "static"
+    static_dir = settings.static_dir
     static_dir.mkdir(parents=True, exist_ok=True)
     
     # Create static file routers for user UI

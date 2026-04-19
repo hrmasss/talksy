@@ -21,6 +21,7 @@ import {
   RiVolumeUpLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
+import { getAssetUrl } from "@/lib/api-client";
 import {
   startMockTest,
   submitMockAnswer,
@@ -78,6 +79,7 @@ export default function MockTestPage() {
   const displayPassage = parsedQuestionData?.passage || question?.passage;
   const displayQuestionText = parsedQuestionData?.question || parsedQuestionData?.question_text || (typeof parsedQuestionData === "string" ? parsedQuestionData : question?.question_text);
   const displayOptions = (parsedQuestionData?.options && Array.isArray(parsedQuestionData.options)) ? parsedQuestionData.options : question?.options;
+  const isListeningQuestion = question?.section === "listening";
 
   const [report, setReport] = useState<MockTestReport | null>(null);
   const [answer, setAnswer] = useState("");
@@ -140,8 +142,9 @@ export default function MockTestPage() {
 
         // Prefer server-cached audio if URL provided.
         if (q.audio_url) {
-          questionAudioUrlRef.current = q.audio_url;
-          const audio = new Audio(q.audio_url);
+          const resolvedAudioUrl = getAssetUrl(q.audio_url);
+          questionAudioUrlRef.current = resolvedAudioUrl;
+          const audio = new Audio(resolvedAudioUrl);
           questionAudioRef.current = audio;
           audio.onended = () => setTtsPlaying(false);
           audio.onerror = () => setTtsPlaying(false);
@@ -511,7 +514,7 @@ export default function MockTestPage() {
         </div>
 
         {/* Passage */}
-        {displayPassage && (
+        {!isListeningQuestion && displayPassage && (
           <Card className="mb-4">
             <CardContent className="prose prose-sm dark:prose-invert max-h-60 overflow-y-auto pt-4 text-sm">
               {displayPassage.includes("<") ? (
@@ -527,7 +530,9 @@ export default function MockTestPage() {
         <Card className="mb-4">
           <CardContent className="pt-6">
             <div className="mb-4 text-sm font-medium leading-relaxed whitespace-pre-wrap">
-              {displayQuestionText}
+              {isListeningQuestion
+                ? "Listen to the audio carefully, then write your answer."
+                : displayQuestionText}
             </div>
 
             {/* Replay / Listen button for audio sections */}
@@ -536,16 +541,17 @@ export default function MockTestPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1.5"
+                  className={cn(
+                    "gap-1.5",
+                    ttsPlaying && "border-primary/40 bg-primary/5 text-primary"
+                  )}
                   onClick={handleReplayAudio}
                   disabled={ttsPlaying}
                 >
-                  {ttsPlaying ? (
-                    <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RiVolumeUpLine className="h-3.5 w-3.5" />
-                  )}
-                  {ttsPlaying ? "Playing…" : "Replay Question"}
+                  <RiVolumeUpLine
+                    className={cn("h-3.5 w-3.5", ttsPlaying && "animate-pulse")}
+                  />
+                  {ttsPlaying ? "Playing audio" : "Replay Question"}
                 </Button>
               </div>
             )}
@@ -582,42 +588,26 @@ export default function MockTestPage() {
                   }
                   className="min-h-30 resize-none"
                 />
-                <div className="flex items-center gap-2">
-                  {/* Listen to question (non-audio sections) */}
-                  {!isAudioSection && (
+                {question.section === "speaking" && (
+                  <div className="flex items-center gap-2">
                     <Button
-                      variant="outline"
+                      variant={isRecording ? "destructive" : "outline"}
                       size="sm"
-                      className="gap-1.5"
-                      onClick={() => question && playQuestionAudio(question)}
-                      disabled={ttsPlaying}
+                      className={cn("gap-1.5", isRecording && "animate-pulse")}
+                      onClick={handleToggleRecording}
+                      disabled={transcribing}
                     >
-                      {ttsPlaying ? (
+                      {transcribing ? (
                         <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+                      ) : isRecording ? (
+                        <RiStopCircleLine className="h-3.5 w-3.5" />
                       ) : (
-                        <RiVolumeUpLine className="h-3.5 w-3.5" />
+                        <RiMicLine className="h-3.5 w-3.5" />
                       )}
-                      Listen
+                      {transcribing ? "Transcribing…" : isRecording ? "Stop" : "Record"}
                     </Button>
-                  )}
-                  {/* Record voice answer */}
-                  <Button
-                    variant={isRecording ? "destructive" : "outline"}
-                    size="sm"
-                    className={cn("gap-1.5", isRecording && "animate-pulse")}
-                    onClick={handleToggleRecording}
-                    disabled={transcribing}
-                  >
-                    {transcribing ? (
-                      <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
-                    ) : isRecording ? (
-                      <RiStopCircleLine className="h-3.5 w-3.5" />
-                    ) : (
-                      <RiMicLine className="h-3.5 w-3.5" />
-                    )}
-                    {transcribing ? "Transcribing…" : isRecording ? "Stop" : "Record"}
-                  </Button>
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -94,6 +94,7 @@ class ExamState(TypedDict):
     # --- Question management -----------------------------------------------
     current_question: str | None
     current_question_type: str | None
+    current_question_passage: str | None
     current_part: int | None            # Speaking part or Writing task number
     question_number: int
     questions_asked: list[dict[str, Any]]

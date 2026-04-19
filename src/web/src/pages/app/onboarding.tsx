@@ -18,6 +18,7 @@ import {
   RiStopCircleLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
+import { getAssetUrl } from "@/lib/api-client";
 import {
   getActivePlacementTest,
   startPlacementTest,
@@ -73,6 +74,7 @@ export default function OnboardingPage() {
   const displayQuestionText = parsedQuestionData?.question || parsedQuestionData?.question_text || (question?.question_text ?? "");
   const displayOptions = (parsedQuestionData?.options && Array.isArray(parsedQuestionData.options)) ? parsedQuestionData.options : (question?.options || []);
   const displayPassage = parsedQuestionData?.passage || (question as any)?.passage || null;
+  const isListeningQuestion = question?.section === "listening";
 
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export default function OnboardingPage() {
   // Handle auto-playing audio for listening questions
   useEffect(() => {
     if (phase === "test" && question?.audio_url) {
-      const audio = new Audio(question.audio_url);
+      const audio = new Audio(getAssetUrl(question.audio_url));
       audio.play().catch((err) => {
         console.warn("Auto-play blocked or failed:", err);
       });
@@ -356,7 +358,7 @@ export default function OnboardingPage() {
         {/* Question */}
         <div className="flex flex-1 items-start justify-center p-6">
           <div className="w-full max-w-2xl">
-            {displayPassage && (
+            {!isListeningQuestion && displayPassage && (
               <Card className="mb-4">
                 <CardContent className="prose prose-sm dark:prose-invert max-h-60 overflow-y-auto pt-4 text-sm">
                   <div className="whitespace-pre-wrap">{displayPassage}</div>
@@ -367,7 +369,9 @@ export default function OnboardingPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-lg leading-relaxed">
                   <div className="flex-1 whitespace-pre-wrap">
-                    {displayQuestionText}
+                    {isListeningQuestion
+                      ? "Listen to the audio carefully, then write your answer below."
+                      : displayQuestionText}
                   </div>
                   {question.audio_url && (
                     <Button
@@ -375,7 +379,7 @@ export default function OnboardingPage() {
                       size="icon"
                       className="ml-4 h-10 w-10 shrink-0 rounded-full"
                       onClick={() => {
-                        const audio = new Audio(question.audio_url!);
+                        const audio = new Audio(getAssetUrl(question.audio_url!));
                         audio.play();
                       }}
                     >

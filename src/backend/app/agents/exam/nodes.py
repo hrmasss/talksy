@@ -195,6 +195,7 @@ async def _generate_structured_question(
         "part": part,
         "type": question_type,
         "text": data.get("question_text", "").strip(),
+        "passage": data.get("passage"),
         "options": data.get("options") or [],
         "time_limit_seconds": data.get("time_limit_seconds"),
         "cue_card": data.get("cue_card"),
@@ -319,6 +320,7 @@ async def initialise_exam_node(state: ExamState) -> dict:
                     "part": fallback_part,
                     "type": _default_question_type(section, fallback_part),
                     "text": f"Please answer IELTS {section} question {question_number + 1}.",
+                    "passage": None,
                     "options": [],
                     "time_limit_seconds": None,
                     "cue_card": None,
@@ -379,6 +381,7 @@ async def generate_question_node(state: ExamState) -> dict:
         "part": part,
         "type": q_type,
         "text": question_text,
+        "passage": (selected or {}).get("passage"),
         "options": (selected or {}).get("options", []),
         "time_limit_seconds": (selected or {}).get("time_limit_seconds"),
         "cue_card": (selected or {}).get("cue_card"),
@@ -391,6 +394,7 @@ async def generate_question_node(state: ExamState) -> dict:
         "messages": [AIMessage(content=question_text)],
         "current_question": question_text,
         "current_question_type": q_type,
+        "current_question_passage": question_data.get("passage"),
         "current_part": part,
         "current_phase": phase,
         "questions_asked": questions_asked,
@@ -408,6 +412,7 @@ async def process_answer_node(state: ExamState) -> dict:
     """Store the candidate's answer and update bookkeeping."""
     answer = state.get("current_answer", "")
     question = state.get("current_question", "")
+    question_passage = state.get("current_question_passage")
     qn = state.get("question_number", 0)
     part = state.get("current_part", 1)
     q_type = state.get("current_question_type", "unknown")
@@ -419,6 +424,7 @@ async def process_answer_node(state: ExamState) -> dict:
     candidate_answers = list(state.get("candidate_answers", []))
     record = {
         "question": question,
+        "passage": question_passage,
         "answer": answer,
         "part": part,
         "question_type": q_type,
@@ -453,6 +459,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         section=section,
         part=last.get("part", 1),
         question=last["question"],
+        support_material=last.get("passage"),
         answer=last["answer"],
         target_band=target_band,
     )

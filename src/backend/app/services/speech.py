@@ -92,6 +92,33 @@ def _transcription_to_text(transcription: object) -> str:
     raise RuntimeError("Groq returned no transcription text")
 
 
+def _extract_api_error_message(exc: Exception) -> str:
+    """Return a helpful provider error message when available."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            if isinstance(error, dict):
+                message = error.get("message")
+                if isinstance(message, str) and message.strip():
+                    return message.strip()
+
+    message = str(exc).strip()
+    return message or "Unknown provider error"
+
+
 def _chunk_tts_text(text: str, max_chars: int = 200) -> list[str]:
     """Split text into TTS-safe chunks.
 
@@ -167,8 +194,9 @@ def _sync_tts_request(
         response.write_to_file(str(temp_path))
         return temp_path.read_bytes()
     except Exception as exc:
-        logger.warning("Groq TTS request failed: {}", exc)
-        raise RuntimeError("Text-to-speech generation failed") from exc
+        details = _extract_api_error_message(exc)
+        logger.warning("Groq TTS request failed: {}", details)
+        raise RuntimeError(f"Text-to-speech generation failed: {details}") from exc
     finally:
         with contextlib.suppress(FileNotFoundError):
             temp_path.unlink()
