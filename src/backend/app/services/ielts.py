@@ -482,7 +482,7 @@ class IELTSService:
             logger.error("Daily study plan prompt unexpectedly empty (user_id={})", str(user_id))
             return {"error": "daily_plan_prompt_empty"}
 
-        llm = get_llm(model=settings.gemini_model, temperature=0.7)
+        llm = get_llm(model=settings.groq_model, temperature=0.7)
         try:
             structured_llm = llm.with_structured_output(DailyStudyPlanModel)
             plan_output: DailyStudyPlanModel = await structured_llm.ainvoke(
@@ -553,7 +553,7 @@ class IELTSService:
             user_response=user_response,
         )
 
-        llm = get_llm(model=settings.gemini_model, temperature=0.3)
+        llm = get_llm(model=settings.groq_model, temperature=0.3)
 
         try:
             structured_llm = llm.with_structured_output(StudyActivityFeedbackModel)

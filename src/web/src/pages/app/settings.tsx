@@ -27,9 +27,9 @@ export default function SettingsPage() {
     getUserSettings()
       .then((s) => {
         setSettings(s);
-        if (s.gemini_api_keys.length > 0) {
+        if (s.groq_api_keys.length > 0) {
           // Pre-fill with masked values (user needs to replace to update)
-          setKeys(s.gemini_api_keys);
+          setKeys(s.groq_api_keys);
         }
       })
       .catch(() => {
@@ -62,9 +62,9 @@ export default function SettingsPage() {
       // Send all non-empty keys, even masked ones (backend will handle them).
       // A masked key means "leave as is".
       const cleanKeys = keys.filter((k) => k.trim());
-      const response = await updateUserSettings({ gemini_api_keys: cleanKeys });
+      const response = await updateUserSettings({ groq_api_keys: cleanKeys });
       setSettings(response);
-      setKeys(response.gemini_api_keys.length > 0 ? response.gemini_api_keys : [""]);
+      setKeys(response.groq_api_keys.length > 0 ? response.groq_api_keys : [""]);
       setDirty(false);
       toast.success("Settings saved successfully");
     } catch (e) {
@@ -99,9 +99,9 @@ export default function SettingsPage() {
               <RiShieldKeyholeLine className="h-4.5 w-4.5 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-base">Gemini API Keys</CardTitle>
+              <CardTitle className="text-base">Groq API Keys</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Add your own Google Gemini API keys to use platform features.
+                Add your own Groq API keys to use platform features.
                 You can add multiple keys for better rate limits.
               </p>
             </div>
@@ -109,11 +109,11 @@ export default function SettingsPage() {
         </CardHeader>
         <Separator />
         <CardContent className="pt-5">
-          {settings?.has_gemini_keys && (
+          {settings?.has_groq_keys && (
             <div className="mb-4 flex items-center gap-2">
               <Badge variant="secondary" className="gap-1 text-xs">
                 <RiCheckLine className="h-3 w-3" />
-                {settings.gemini_api_keys.length} key{settings.gemini_api_keys.length !== 1 ? "s" : ""} configured
+                {settings.groq_api_keys.length} key{settings.groq_api_keys.length !== 1 ? "s" : ""} configured
               </Badge>
             </div>
           )}
@@ -125,7 +125,7 @@ export default function SettingsPage() {
                   <RiKey2Line className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     type="password"
-                    placeholder="AIzaSy..."
+                    placeholder="gsk_..."
                     value={key}
                     onChange={(e) => handleKeyChange(index, e.target.value)}
                     className="pl-9 font-mono text-sm"
@@ -161,12 +161,12 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground">
               Keys are stored securely and never shared. Get a key from{" "}
               <a
-                href="https://aistudio.google.com/apikey"
+                href="https://console.groq.com/keys"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline underline-offset-2 hover:text-primary/80"
               >
-                Google AI Studio
+                Groq Console
               </a>
               .
             </p>

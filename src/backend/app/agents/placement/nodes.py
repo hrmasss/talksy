@@ -93,7 +93,7 @@ async def generate_placement_question_node(state: PlacementState) -> dict:
     prompt = _get_section_prompt(section, section_q, total_for_section)
     request_messages = _build_question_request(prompt)
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.8)
+    llm = get_llm(model=settings.groq_model, temperature=0.8)
 
     try:
         structured = llm.with_structured_output(PlacementQuestion)
@@ -194,7 +194,7 @@ async def evaluate_placement_node(state: PlacementState) -> dict:
         }
 
     prompt = get_placement_evaluation_prompt(responses)
-    llm = get_llm(model=settings.gemini_model, temperature=0.2)
+    llm = get_llm(model=settings.groq_model, temperature=0.2)
 
     try:
         structured = llm.with_structured_output(PlacementEvaluation)

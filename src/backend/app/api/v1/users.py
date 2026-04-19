@@ -238,12 +238,12 @@ class UserController(Controller):
             except json.JSONDecodeError:
                 prefs = {}
 
-        raw_keys: list[str] = prefs.get("gemini_api_keys", [])
+        raw_keys: list[str] = prefs.get("groq_api_keys", []) or prefs.get("gemini_api_keys", [])
         masked = [_mask_key(k) for k in raw_keys]
 
         return UserSettingsResponse(
-            gemini_api_keys=masked,
-            has_gemini_keys=len(raw_keys) > 0,
+            groq_api_keys=masked,
+            has_groq_keys=len(raw_keys) > 0,
         )
 
     @put(
@@ -272,13 +272,13 @@ class UserController(Controller):
 
         prefs = dict(prefs)
 
-        if data.gemini_api_keys is not None:
+        if data.groq_api_keys is not None:
             # Get existing keys from preferences
-            existing_keys = prefs.get("gemini_api_keys", [])
+            existing_keys = prefs.get("groq_api_keys", []) or prefs.get("gemini_api_keys", [])
             
             # Reconstruct full list by replacing masked placeholders with their originals
             final_keys = []
-            for i, input_key in enumerate(data.gemini_api_keys):
+            for i, input_key in enumerate(data.groq_api_keys):
                 input_key = input_key.strip()
                 if not input_key:
                     continue
@@ -290,12 +290,13 @@ class UserController(Controller):
                     # Otherwise, assume it's a new or modified key
                     final_keys.append(input_key)
             
-            prefs["gemini_api_keys"] = final_keys
+            prefs["groq_api_keys"] = final_keys
+            prefs.pop("gemini_api_keys", None)
 
         await User.update({"preferences": prefs}).where(User.id == user_id)
 
-        masked = [_mask_key(k) for k in prefs.get("gemini_api_keys", [])]
+        masked = [_mask_key(k) for k in prefs.get("groq_api_keys", [])]
         return UserSettingsResponse(
-            gemini_api_keys=masked,
-            has_gemini_keys=len(masked) > 0,
+            groq_api_keys=masked,
+            has_groq_keys=len(masked) > 0,
         )

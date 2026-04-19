@@ -34,9 +34,10 @@ import {
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
 import { toast } from "sonner";
-import { useOnboardingGate } from "./layout";
+import { useOnboardingGate } from "./onboarding-gate";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
-import { speechToText, textToSpeech } from "@/lib/speech-api";
+import { speechToText } from "@/lib/speech-api";
+import { playStreamingTextToSpeech, type StreamingAudioPlayback } from "@/lib/tts-stream-player";
 
 type Phase = "setup" | "test" | "report" | "history";
 
@@ -91,6 +92,7 @@ export default function MockTestPage() {
   // Audio cache for replay
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
   const questionAudioUrlRef = useRef<string | null>(null);
+  const streamingAudioRef = useRef<StreamingAudioPlayback | null>(null);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
@@ -123,19 +125,6 @@ export default function MockTestPage() {
 
       setTtsPlaying(true);
       try {
-        let audioUrl: string;
-
-        // Prefer server-cached audio if URL provided
-        if (q.audio_url) {
-          audioUrl = q.audio_url;
-        } else {
-          // Fall back to generating via TTS endpoint
-          const buf = await textToSpeech(q.question_text);
-          const blob = new Blob([buf], { type: "audio/wav" });
-          audioUrl = URL.createObjectURL(blob);
-        }
-
-        // Clean up previous audio
         if (questionAudioRef.current) {
           questionAudioRef.current.pause();
           questionAudioRef.current = null;
@@ -143,13 +132,33 @@ export default function MockTestPage() {
         if (questionAudioUrlRef.current?.startsWith("blob:")) {
           URL.revokeObjectURL(questionAudioUrlRef.current);
         }
+        questionAudioUrlRef.current = null;
+        if (streamingAudioRef.current) {
+          streamingAudioRef.current.stop();
+          streamingAudioRef.current = null;
+        }
 
-        questionAudioUrlRef.current = audioUrl;
-        const audio = new Audio(audioUrl);
-        questionAudioRef.current = audio;
-        audio.onended = () => setTtsPlaying(false);
-        audio.onerror = () => setTtsPlaying(false);
-        audio.play();
+        // Prefer server-cached audio if URL provided.
+        if (q.audio_url) {
+          questionAudioUrlRef.current = q.audio_url;
+          const audio = new Audio(q.audio_url);
+          questionAudioRef.current = audio;
+          audio.onended = () => setTtsPlaying(false);
+          audio.onerror = () => setTtsPlaying(false);
+          await audio.play();
+          return;
+        }
+
+        const playback = await playStreamingTextToSpeech(q.question_text);
+        streamingAudioRef.current = playback;
+        questionAudioRef.current = null;
+        questionAudioUrlRef.current = null;
+        void playback.finished.finally(() => {
+          if (streamingAudioRef.current === playback) {
+            streamingAudioRef.current = null;
+            setTtsPlaying(false);
+          }
+        });
       } catch {
         toast.error("Could not play audio. Check API key in Settings.");
         setTtsPlaying(false);
@@ -168,6 +177,10 @@ export default function MockTestPage() {
       if (questionAudioRef.current) {
         questionAudioRef.current.pause();
         questionAudioRef.current = null;
+      }
+      if (streamingAudioRef.current) {
+        streamingAudioRef.current.stop();
+        streamingAudioRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

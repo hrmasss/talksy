@@ -19,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getProgress, getDailyPlan, type ProgressOverview, type DailyStudyPlan } from "@/lib/ielts-api";
 import { useAuth } from "@/lib/auth";
-import { useOnboardingGate } from "./layout";
+import { useOnboardingGate } from "./onboarding-gate";
 
 const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string }> = {
   listening: { icon: RiHeadphoneLine, color: "text-blue-600", bg: "bg-blue-500/10" },

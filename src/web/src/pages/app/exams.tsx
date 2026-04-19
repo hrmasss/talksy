@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RiBookLine, RiTimeLine, RiArrowRightLine } from "@remixicon/react";
-import { useOnboardingGate } from "./layout";
+import { useOnboardingGate } from "./onboarding-gate";
 
 const examTypes = [
   {

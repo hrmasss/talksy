@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
-import { useOnboardingGate } from "./layout";
+import { useOnboardingGate } from "./onboarding-gate";
 import { generateTopics, type TopicGeneratorResult } from "@/lib/ielts-api";
 import { toast } from "sonner";
 import {

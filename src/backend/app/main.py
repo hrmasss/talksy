@@ -1,5 +1,6 @@
 """Main Litestar application setup."""
 
+import asyncio
 from pathlib import Path
 
 from app import __version__
@@ -150,20 +151,29 @@ async def _ensure_postgres_db_exists() -> None:
     db_name = settings.db_name
     try:
         # Connect to the default 'postgres' maintenance database
-        conn = await asyncpg.connect(
-            host=settings.db_host,
-            port=settings.db_port,
-            user=settings.db_user,
-            password=settings.db_password,
-            database="postgres",
+        conn = await asyncio.wait_for(
+            asyncpg.connect(
+                host=settings.db_host,
+                port=settings.db_port,
+                user=settings.db_user,
+                password=settings.db_password,
+                database="postgres",
+            ),
+            timeout=5,
         )
         try:
-            exists = await conn.fetchval(
-                "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+            exists = await asyncio.wait_for(
+                conn.fetchval(
+                    "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+                ),
+                timeout=5,
             )
             if not exists:
                 # Database names cannot be parameterised in CREATE DATABASE
-                await conn.execute(f'CREATE DATABASE "{db_name}"')
+                await asyncio.wait_for(
+                    conn.execute(f'CREATE DATABASE "{db_name}"'),
+                    timeout=5,
+                )
                 logger.info(f"Database '{db_name}' created successfully")
             else:
                 logger.debug(f"Database '{db_name}' already exists")
@@ -186,9 +196,9 @@ async def on_startup() -> None:
         from piccolo.engine import engine_finder
         engine = engine_finder()
         if engine:
-            await engine.start_connection_pool()
+            await asyncio.wait_for(engine.start_connection_pool(), timeout=5)
             logger.info("Database connection pool started")
-            await ensure_tables_exist()
+            await asyncio.wait_for(ensure_tables_exist(), timeout=10)
     except Exception as e:
         logger.warning(f"Could not start database connection pool: {e}")
 

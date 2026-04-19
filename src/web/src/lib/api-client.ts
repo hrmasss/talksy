@@ -178,3 +178,12 @@ export async function requestArrayBuffer(path: string, options: RequestOptions =
 
   return response.arrayBuffer();
 }
+
+export async function requestResponse(path: string, options: RequestOptions = {}): Promise<Response> {
+  const response = await apiFetch(path, options);
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response;
+}

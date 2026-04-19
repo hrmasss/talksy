@@ -174,7 +174,7 @@ async def _generate_structured_question(
         question_number=question_number,
     )
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.8)
+    llm = get_llm(model=settings.groq_model, temperature=0.8)
     structured = llm.with_structured_output(ExamQuestion)
     user_prompt = (
         f"Generate ONLY question #{question_number + 1} of {total_questions} for IELTS {section}. "
@@ -457,7 +457,7 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         target_band=target_band,
     )
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.3)
+    llm = get_llm(model=settings.groq_model, temperature=0.3)
 
     try:
         structured = llm.with_structured_output(AnswerEvaluation)
@@ -526,7 +526,7 @@ async def final_evaluation_node(state: ExamState) -> dict:
         difficulty_level=difficulty,
     )
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.2)
+    llm = get_llm(model=settings.groq_model, temperature=0.2)
 
     try:
         structured = llm.with_structured_output(FinalExamReport)

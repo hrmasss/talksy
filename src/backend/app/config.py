@@ -41,16 +41,18 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # AI / LLM - Gemini
-    gemini_api_keys: str = ""  # comma-separated list of Gemini API keys
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
-    gemini_stt_model: str = "gemini-2.5-flash-preview"
-    gemini_tts_sample_rate: int = 24000
+    # AI / LLM - Groq
+    groq_api_key: str = ""
+    groq_api_keys: str = ""  # comma-separated list of Groq API keys
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_tts_model: str = "canopylabs/orpheus-v1-english"
+    groq_tts_voice: str = "troy"
+    groq_stt_model: str = "whisper-large-v3-turbo"
+    groq_tts_sample_rate: int = 24000
     tavily_api_key: str = ""
     serper_api_key: str = ""
     embedding_model: str = "models/text-embedding-004"
-    embedding_provider: Literal["google", "huggingface"] = "google"
+    embedding_provider: Literal["google", "huggingface"] = "huggingface"
     huggingface_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Qdrant - long-term memory vector store
@@ -90,6 +92,19 @@ class Settings(BaseSettings):
             # Default to project root
             base = Path(__file__).parent.parent.parent.parent.resolve()
             return str(base / "talksy.db")
+        return v
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def normalize_debug(cls, v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            lowered = v.strip().lower()
+            if lowered in {"1", "true", "yes", "on", "debug", "development", "dev"}:
+                return True
+            if lowered in {"0", "false", "no", "off", "release", "production", "prod"}:
+                return False
         return v
 
     @property

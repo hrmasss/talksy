@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { useCallback, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -51,29 +51,18 @@ import {
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { OnboardingGateContext } from "./onboarding-gate";
 
-// ── Onboarding Gate Context ──────────────────────────────────
-interface OnboardingGateContextValue {
-  requireOnboarding: () => boolean;
-}
-
-const OnboardingGateContext = createContext<OnboardingGateContextValue | null>(null);
-
-/**
- * Hook for child pages to gate features behind onboarding.
- * Call `requireOnboarding()` before starting any exam/feature.
- * Returns `true` if the user still needs onboarding (modal was shown),
- * `false` if they can proceed.
- */
-// eslint-disable-next-line react-refresh/only-export-components
-export function useOnboardingGate() {
-  const ctx = useContext(OnboardingGateContext);
-  if (!ctx) throw new Error("useOnboardingGate must be used within AppLayout");
-  return ctx;
+interface NavItem {
+  path: string;
+  icon: typeof RiDashboardLine;
+  label: string;
+  gated?: boolean;
+  exact?: boolean;
 }
 
 // ── Nav items ────────────────────────────────────────────────
-const mainNavItems = [
+const mainNavItems: NavItem[] = [
   { path: "/app/dashboard", icon: RiDashboardLine, label: "Dashboard" },
   { path: "/app/mock-test", icon: RiFlashlightLine, label: "Mock Test", gated: true },
   { path: "/app/daily-study", icon: RiCalendarCheckLine, label: "Study", gated: true },

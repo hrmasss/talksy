@@ -119,14 +119,14 @@ class PasswordChange(BaseSchema):
 class UserSettingsUpdate(BaseSchema):
     """Schema for updating user settings (stored in preferences JSON)."""
 
-    gemini_api_keys: list[str] | None = Field(
+    groq_api_keys: list[str] | None = Field(
         default=None,
-        description="List of user-provided Gemini API keys",
+        description="List of user-provided Groq API keys",
     )
 
 
 class UserSettingsResponse(BaseSchema):
     """Schema for user settings response (masks keys)."""
 
-    gemini_api_keys: list[str] = Field(default_factory=list)
-    has_gemini_keys: bool = False
+    groq_api_keys: list[str] = Field(default_factory=list)
+    has_groq_keys: bool = False
