@@ -54,6 +54,18 @@ class SpeakingTopic(BaseModel):
         default_factory=list,
         description="Key vocabulary useful for this topic",
     )
+    practice_focus: str = Field(
+        default="",
+        description="Short explanation of what the student should practise in this topic",
+    )
+    answer_framework: list[str] = Field(
+        default_factory=list,
+        description="Simple steps or talking points the learner can follow",
+    )
+    common_mistakes: list[str] = Field(
+        default_factory=list,
+        description="Common mistakes to avoid for this speaking topic",
+    )
     target_band: str = Field(
         description="Target band range, e.g. '6.0-7.0'"
     )
@@ -76,6 +88,18 @@ class WritingTopic(BaseModel):
         description="Suggested paragraph outline for guidance",
     )
     key_vocabulary: list[str] = Field(default_factory=list)
+    practice_focus: str = Field(
+        default="",
+        description="Main writing skill focus for this task",
+    )
+    planning_steps: list[str] = Field(
+        default_factory=list,
+        description="Short pre-writing planning steps",
+    )
+    structure_guide: list[str] = Field(
+        default_factory=list,
+        description="Recommended structure for the response",
+    )
     target_band: str = Field(description="Target band range")
 
 
@@ -89,6 +113,22 @@ class ReadingTopic(BaseModel):
     passage_theme: str = Field(description="Theme of the passage, e.g. 'Space Exploration'")
     question_types: list[str] = Field(
         description="Question types used, e.g. ['True/False/NG', 'Matching Headings']"
+    )
+    passage_summary: str = Field(
+        default="",
+        description="Short student-friendly summary of the passage idea",
+    )
+    practice_focus: str = Field(
+        default="",
+        description="Key reading skill to focus on for this topic",
+    )
+    strategy_steps: list[str] = Field(
+        default_factory=list,
+        description="Simple steps the learner can follow while reading",
+    )
+    vocabulary_hints: list[str] = Field(
+        default_factory=list,
+        description="Helpful words related to the passage theme",
     )
     difficulty: Literal["easy", "medium", "hard"] = Field(description="Difficulty level")
     target_band: str = Field(description="Target band range")
@@ -105,6 +145,22 @@ class ListeningTopic(BaseModel):
     scenario: str = Field(description="Scenario description, e.g. 'Booking a hotel room'")
     question_types: list[str] = Field(
         description="e.g. ['form completion', 'multiple choice']"
+    )
+    audio_context: str = Field(
+        default="",
+        description="Short student-friendly explanation of what the recording is about",
+    )
+    listen_for: list[str] = Field(
+        default_factory=list,
+        description="Specific details the learner should listen for",
+    )
+    strategy_steps: list[str] = Field(
+        default_factory=list,
+        description="Simple steps for approaching the listening task",
+    )
+    vocabulary_hints: list[str] = Field(
+        default_factory=list,
+        description="Helpful words related to the listening scenario",
     )
     difficulty: Literal["easy", "medium", "hard"] = Field(description="Difficulty level")
     target_band: str = Field(description="Target band range")

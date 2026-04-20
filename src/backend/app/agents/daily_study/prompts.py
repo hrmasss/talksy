@@ -1,4 +1,4 @@
-"""Prompts for daily study content generation and activity evaluation."""
+"""Prompts for daily study content generation."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def get_daily_study_plan_prompt(
     weakest_section = min(safe_section_scores, key=safe_section_scores.get) if safe_section_scores else "writing"
     band_gap = target_band - current_band
 
-    return f"""You are an expert IELTS tutor creating a personalized daily study plan.
+    return f"""You are an expert IELTS tutor creating a personalized, student-friendly IELTS daily study plan.
 
 STUDENT PROFILE:
 - Current Estimated Band: {current_band}
@@ -64,78 +64,67 @@ RECENT HISTORY:
 {history_text}
 
 GENERATION RULES:
-1. Allocate MORE time to weak areas (especially {weakest_section})
-2. Include a mix of activity types for variety
-3. Gradually increase difficulty toward target band {target_band}
-4. Total activities should fill approximately {practice_time_minutes} minutes
-5. Each activity should be self-contained and completable independently
-6. Include at least one vocabulary exercise daily
-7. Focus writing/speaking activities on the student's specific weaknesses
+1. This is a PRACTICE phase, not an evaluation phase. Do not ask the student to take a test.
+2. Allocate MORE support to weak areas, especially {weakest_section}.
+3. Use simple English, short instructions, and encouraging language.
+4. Activities must feel safe for a beginner if the band is low, while still moving toward band {target_band}.
+5. Total activities should fill approximately {practice_time_minutes} minutes.
+6. Every activity must be fully self-contained and easy to complete on a study site.
+7. Keep materials readable on screen: short sections, bullets, and practical examples.
+8. Avoid advanced jargon unless you explain it clearly.
+9. Make the plan foundational first, then gradually harder.
 
-Generate 4-6 study activities. Each activity must be COMPLETE - include all content
-needed to do the exercise (passage text, questions, word lists, prompts, etc.).
+Generate EXACTLY 5 activities in this EXACT order:
+1. section="vocabulary", activity_type="vocabulary_practice", title="Basic Vocabulary Building"
+2. section="listening", activity_type="mini_listening", title="Simple Listening Comprehension"
+3. section="reading", activity_type="reading_passage", title="Basic Reading Comprehension"
+4. section="writing", activity_type="writing_task", title="Simple Sentence Writing"
+5. section="speaking", activity_type="speaking_prompt", title="Introduction Practice"
+
+Each activity must include practical details using this student-friendly content structure:
+- "overview": one short supportive sentence explaining the activity
+- "instructions": 2-4 short action steps
+- "study_goal": one sentence about what skill this builds
+- "warm_up": optional short starter or reminder
+- "material_title": short title for the study material
+- "material": the full exercise content
+- "vocabulary": optional array of objects with "word", "meaning", and "example"
+- "questions": optional array of objects with "prompt" and "answer_hint"
+- "sentence_frames": optional array of simple model sentence starters
+- "checkpoints": optional array of small things to remember while doing the task
+- "sample_response": optional short sample answer
+- "study_tip": one practical tip
+- "next_step": one small follow-up action after finishing
 
 Respond with a JSON object:
 {{
-    "rationale": "Brief explanation of why these activities were chosen...",
+    "rationale": "Start with: These activities were chosen to address the student's weaknesses, focusing on improving listening and reading comprehension, and developing writing and speaking skills, with a strong emphasis on vocabulary building. Given the student's current estimated band of {current_band:.1f} and target band of {target_band:.1f}, activities are designed to be foundational, gradually increasing in difficulty.",
     "activities": [
         {{
-            "section": "vocabulary|listening|reading|writing|speaking",
-            "activity_type": "vocabulary_practice|mini_listening|reading_passage|writing_task|speaking_prompt",
-            "title": "Short descriptive title",
+            "section": "Use the exact required section",
+            "activity_type": "Use the exact required activity_type",
+            "title": "Use the exact required title",
             "difficulty_level": 1-5,
             "estimated_minutes": <int>,
             "content": {{
-                "instructions": "What to do...",
-                "material": "The actual content (passage, word list, scenario, prompt, etc.)",
-                "questions": ["Q1...", "Q2..."],
-                "options": {{}},
-                "correct_answers": {{}},
-                "tips": "Optional study tip..."
+                "overview": "Short explanation...",
+                "instructions": ["Step 1...", "Step 2..."],
+                "study_goal": "What this helps the student improve",
+                "warm_up": "Optional starter",
+                "material_title": "Clear label",
+                "material": "The actual content the learner should study",
+                "vocabulary": [
+                    {{"word": "example", "meaning": "simple meaning", "example": "Example sentence."}}
+                ],
+                "questions": [
+                    {{"prompt": "Question text", "answer_hint": "Short hint"}}
+                ],
+                "sentence_frames": ["I usually...", "I want to..."],
+                "checkpoints": ["Remember ...", "Check ..."],
+                "sample_response": "Optional simple model answer",
+                "study_tip": "Helpful tip...",
+                "next_step": "Tiny follow-up task"
             }}
         }}
     ]
-}}"""
-
-
-def get_activity_evaluation_prompt(
-    *,
-    section: str,
-    activity_type: str,
-    content: dict[str, Any],
-    user_response: str,
-) -> str:
-    """Evaluate a user's response to a study activity."""
-
-    return f"""You are an IELTS examiner evaluating a student's response to a study activity.
-
-ACTIVITY DETAILS:
-- Section: {section}
-- Type: {activity_type}
-- Instructions: {content.get('instructions', '')}
-- Material: {str(content.get('material', ''))[:500]}
-- Questions: {content.get('questions', [])}
-
-STUDENT'S RESPONSE:
-{user_response}
-
-{"CORRECT ANSWERS: " + str(content.get('correct_answers', '')) if content.get('correct_answers') else ''}
-
-EVALUATION TASK:
-1. Assess the response quality using IELTS band descriptors
-2. For objective questions: check correctness
-3. For writing/speaking: evaluate grammar, vocabulary, coherence, task achievement
-4. Provide constructive feedback and specific improvement suggestions
-
-Respond with a JSON object:
-{{
-    "band_score": <float 0-9>,
-    "is_correct": <bool or null for subjective>,
-    "feedback": "Detailed feedback...",
-    "grammar_notes": "Specific grammar observations...",
-    "vocabulary_notes": "Vocabulary assessment...",
-    "strengths": ["..."],
-    "weaknesses": ["..."],
-    "suggestions": ["Specific improvement tip 1", "Specific improvement tip 2"],
-    "corrected_version": "If applicable, show the corrected/improved version..."
 }}"""

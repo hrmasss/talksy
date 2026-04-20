@@ -54,29 +54,26 @@ export default function RoadmapDetailPage() {
   ].filter((item) => item.count > 0);
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
-      <Button asChild variant="ghost" size="sm" className="mb-4 gap-2">
+    <div className="mx-auto max-w-6xl px-6 py-8">
+      <Button asChild variant="ghost" size="sm" className="mb-4 gap-2 text-sm">
         <Link to="/app/roadmap">
           <RiArrowLeftLine className="h-4 w-4" />
           Back to Roadmap
         </Link>
       </Button>
 
-      <div className="mb-6 space-y-3">
+      <div className="mb-8 space-y-4 border-b border-border pb-6">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">{phase.title}</h1>
-          <Badge variant="secondary" className="capitalize">
-            {phase.status}
+          <h1 className="text-4xl font-semibold tracking-tight">{phase.title}</h1>
+          <Badge variant={phase.status === "active" ? "default" : "secondary"} className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+            {phase.status === "active" ? "Current Version" : "Saved Version"}
           </Badge>
-          {phase.quizScore != null && (
-            <Badge variant="outline">Quiz {phase.quizScore}%</Badge>
-          )}
         </div>
-        <p className="max-w-3xl text-sm text-muted-foreground">{phase.description}</p>
+        <p className="max-w-4xl text-lg leading-8 text-muted-foreground">{phase.description}</p>
         {topicCounts.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {topicCounts.map((item) => (
-              <Badge key={item.label} variant="secondary" className="gap-1 text-xs">
+              <Badge key={item.label} variant="outline" className="gap-1 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
                 <item.icon className="h-3 w-3" />
                 {item.count} {item.label}
               </Badge>

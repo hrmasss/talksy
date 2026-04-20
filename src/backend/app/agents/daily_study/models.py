@@ -24,10 +24,9 @@ class DailyStudyPlanModel(BaseModel):
     rationale: str = Field(default="")
 
 
-class StudyActivityFeedbackModel(BaseModel):
-    """Evaluation payload for one submitted study activity response."""
+class StudyActivityCompletionModel(BaseModel):
+    """Confirmation payload returned after completing a study activity."""
 
-    band_score: float = Field(default=5.0, ge=0, le=9)
-    feedback: str = Field(default="Evaluation completed.")
-    suggestions: list[str] = Field(default_factory=list)
-    is_correct: bool | None = None
+    message: str = Field(default="Your work has been saved.")
+    next_steps: list[str] = Field(default_factory=list)
+    saved_response: bool = Field(default=True)

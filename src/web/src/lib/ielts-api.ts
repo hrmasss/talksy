@@ -108,12 +108,11 @@ export interface DailyStudyHistoryResponse {
   items: DailyStudyPlan[];
 }
 
-export interface StudyActivityFeedback {
+export interface StudyActivityCompletion {
   activity_id: string;
-  band_score?: number | null;
-  feedback: Record<string, unknown>;
-  is_correct?: boolean | null;
-  suggestions: string[];
+  message: string;
+  next_steps: string[];
+  saved_response: boolean;
 }
 
 export interface ProgressScoreHistoryItem {
@@ -166,6 +165,9 @@ export interface TopicSpeakingTopic {
   cue_card?: string | null;
   questions: string[];
   vocabulary_hints: string[];
+  practice_focus?: string | null;
+  answer_framework: string[];
+  common_mistakes: string[];
 }
 
 export interface TopicWritingTopic {
@@ -174,10 +176,17 @@ export interface TopicWritingTopic {
   prompt: string;
   sample_outline?: string | null;
   key_vocabulary: string[];
+  practice_focus?: string | null;
+  planning_steps: string[];
+  structure_guide: string[];
 }
 
 export interface TopicReadingTopic {
   passage_theme: string;
+  passage_summary?: string | null;
+  practice_focus?: string | null;
+  strategy_steps: string[];
+  vocabulary_hints: string[];
   difficulty: string;
   question_types: string[];
 }
@@ -185,6 +194,10 @@ export interface TopicReadingTopic {
 export interface TopicListeningTopic {
   section: number | string;
   scenario: string;
+  audio_context?: string | null;
+  listen_for: string[];
+  strategy_steps: string[];
+  vocabulary_hints: string[];
   question_types: string[];
 }
 
@@ -230,8 +243,8 @@ export function submitActivityResponse(
   activityId: string,
   response: string,
   timeSpentSeconds = 0
-): Promise<StudyActivityFeedback> {
-  return requestJson<StudyActivityFeedback>("/ielts/study/submit", {
+): Promise<StudyActivityCompletion> {
+  return requestJson<StudyActivityCompletion>("/ielts/study/submit", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

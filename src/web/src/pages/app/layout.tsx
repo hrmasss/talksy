@@ -235,9 +235,9 @@ export default function AppLayout() {
 
         {/* ── Main Area ────────────────────────────────── */}
         <SidebarInset>
-          <header className="sticky top-0 z-40 flex h-12 items-center gap-2 border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
+          <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/80">
             <SidebarTrigger />
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {mainNavItems.find((i) =>
                 i.exact
                   ? location.pathname === i.path
@@ -246,7 +246,7 @@ export default function AppLayout() {
             </span>
           </header>
 
-          <main className="flex-1">
+          <main className="flex-1 bg-[linear-gradient(to_bottom,transparent,transparent)]">
             <Outlet />
           </main>
         </SidebarInset>

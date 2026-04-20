@@ -30,10 +30,9 @@ from langchain_core.messages import HumanMessage
 from ..agents.common.llm import get_llm
 from ..agents.daily_study.models import (
     DailyStudyPlanModel,
-    StudyActivityFeedbackModel,
+    StudyActivityCompletionModel,
 )
 from ..agents.daily_study.prompts import (
-    get_activity_evaluation_prompt,
     get_daily_study_plan_prompt,
 )
 from ..agents.placement.graph import (
@@ -96,6 +95,85 @@ def _normalize_section_scores(value: Any) -> dict[str, float]:
             normalized[key] = float(raw)
         except (TypeError, ValueError):
             continue
+
+    return normalized
+
+
+REQUIRED_DAILY_ACTIVITY_ORDER: list[dict[str, str]] = [
+    {
+        "section": "vocabulary",
+        "activity_type": "vocabulary_practice",
+        "title": "Basic Vocabulary Building",
+    },
+    {
+        "section": "listening",
+        "activity_type": "mini_listening",
+        "title": "Simple Listening Comprehension",
+    },
+    {
+        "section": "reading",
+        "activity_type": "reading_passage",
+        "title": "Basic Reading Comprehension",
+    },
+    {
+        "section": "writing",
+        "activity_type": "writing_task",
+        "title": "Simple Sentence Writing",
+    },
+    {
+        "section": "speaking",
+        "activity_type": "speaking_prompt",
+        "title": "Introduction Practice",
+    },
+]
+
+
+def _default_activity_content(title: str, section: str) -> dict[str, Any]:
+    """Fallback content when the LLM omits a structured activity payload."""
+    return {
+        "overview": f"This {section} activity helps you build confidence step by step.",
+        "instructions": [
+            "Read the task carefully.",
+            "Complete it in simple English.",
+            "Review your work and note one thing you learned.",
+        ],
+        "study_goal": f"Build stronger {section} foundations through short daily practice.",
+        "material_title": title,
+        "material": "Use this space to practise with short, simple answers.",
+        "checkpoints": [
+            "Use clear and simple ideas.",
+            "Focus on understanding before speed.",
+        ],
+        "study_tip": "Keep your answer simple and accurate.",
+        "next_step": "Repeat the activity once more tomorrow with one small improvement.",
+    }
+
+
+def _normalize_daily_activity_plan(
+    activities_data: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return the fixed beginner-friendly daily study activity set."""
+    normalized: list[dict[str, Any]] = []
+
+    for index, required in enumerate(REQUIRED_DAILY_ACTIVITY_ORDER):
+        generated = activities_data[index] if index < len(activities_data) else {}
+        content = generated.get("content")
+        if not isinstance(content, dict) or not content:
+            content = _default_activity_content(required["title"], required["section"])
+
+        difficulty_level = generated.get("difficulty_level", index + 1)
+        try:
+            difficulty_level = int(difficulty_level)
+        except (TypeError, ValueError):
+            difficulty_level = min(index + 1, 3)
+
+        normalized.append({
+            "section": required["section"],
+            "activity_type": required["activity_type"],
+            "title": required["title"],
+            "difficulty_level": max(1, min(difficulty_level, 5)),
+            "content": content,
+        })
 
     return normalized
 
@@ -495,7 +573,9 @@ class IELTSService:
             )
             return {"error": "daily_plan_generation_failed"}
 
-        activities_data = [a.model_dump() for a in plan_output.activities]
+        activities_data = _normalize_daily_activity_plan(
+            [a.model_dump() for a in plan_output.activities]
+        )
 
         # Save plan to DB
         plan_id = uuid.uuid4()
@@ -535,42 +615,44 @@ class IELTSService:
         user_response: str,
         time_spent_seconds: int = 0,
     ) -> dict[str, Any]:
-        """Submit a response to a study activity and get AI feedback."""
+        """Submit a response to a study activity and mark it as completed."""
         activity = await StudyActivity.select().where(StudyActivity.id == activity_id).first()
         if not activity:
             return {"error": "activity_not_found"}
 
         content = activity.get("content", {})
         if isinstance(content, str):
-            import json
-            content = json.loads(content)
-            
-        # AI evaluation
-        prompt = get_activity_evaluation_prompt(
-            section=activity["section"],
-            activity_type=activity["activity_type"],
-            content=content,
-            user_response=user_response,
-        )
+            try:
+                content = json.loads(content)
+            except json.JSONDecodeError:
+                content = {}
 
-        llm = get_llm(model=settings.groq_model, temperature=0.3)
+        next_steps: list[str] = []
+        if isinstance(content, dict):
+            for key in ("next_step", "study_tip"):
+                value = content.get(key)
+                if isinstance(value, str) and value.strip():
+                    next_steps.append(value.strip())
 
-        try:
-            structured_llm = llm.with_structured_output(StudyActivityFeedbackModel)
-            feedback_model: StudyActivityFeedbackModel = await structured_llm.ainvoke(
-                [HumanMessage(content=prompt)]
-            )
-            feedback = feedback_model.model_dump()
-        except Exception as exc:
-            logger.warning("Study activity structured feedback failed: {}", exc)
-            feedback = StudyActivityFeedbackModel().model_dump()
+            checkpoints = content.get("checkpoints")
+            if isinstance(checkpoints, list):
+                for item in checkpoints[:2]:
+                    if isinstance(item, str) and item.strip():
+                        next_steps.append(item.strip())
+
+        section_label = str(activity.get("section", "study")).replace("_", " ")
+        completion = StudyActivityCompletionModel(
+            message=f"Your {section_label} practice has been saved and marked as complete.",
+            next_steps=next_steps[:3],
+            saved_response=True,
+        ).model_dump()
 
         # Save to DB
         await StudyActivity.update({
             "is_completed": True,
             "user_response": {"text": user_response},
-            "ai_feedback": feedback,
-            "band_score": feedback.get("band_score"),
+            "ai_feedback": completion,
+            "band_score": None,
             "time_spent_seconds": time_spent_seconds,
             "completed_at": datetime.now(),
         }).where(StudyActivity.id == activity_id)
@@ -589,10 +671,9 @@ class IELTSService:
 
         return {
             "activity_id": str(activity_id),
-            "band_score": feedback.get("band_score"),
-            "feedback": feedback,
-            "is_correct": feedback.get("is_correct"),
-            "suggestions": feedback.get("suggestions", []),
+            "message": completion.get("message"),
+            "next_steps": completion.get("next_steps", []),
+            "saved_response": completion.get("saved_response", True),
         }
 
     def _format_daily_plan(self, plan: dict, activities: list) -> dict[str, Any]:

@@ -22,7 +22,7 @@ from app.schemas.ielts import (
     PlacementResultResponse,
     PlacementStartRequest,
     ProgressOverviewResponse,
-    StudyActivityFeedbackResponse,
+    StudyActivityCompletionResponse,
     StudyActivitySubmitRequest,
     TestHistoryResponse,
 )
@@ -497,7 +497,7 @@ class IELTSController(Controller):
     )
     async def submit_activity(
         self, data: StudyActivitySubmitRequest
-    ) -> StudyActivityFeedbackResponse:
+    ) -> StudyActivityCompletionResponse:
         result = await ielts_service.submit_activity_response(
             activity_id=data.activity_id,
             user_response=data.response,
@@ -505,7 +505,7 @@ class IELTSController(Controller):
         )
         if result.get("error"):
             raise NotFoundException(detail=result["error"])
-        return StudyActivityFeedbackResponse(**result)
+        return StudyActivityCompletionResponse(**result)
 
     # ── Progress Tracking ─────────────────────────────────────
 

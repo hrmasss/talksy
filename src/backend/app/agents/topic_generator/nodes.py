@@ -36,6 +36,13 @@ def _time_ctx() -> dict:
     }
 
 
+def _limit_topics(items: list[dict[str, Any]] | None, count: int) -> list[dict[str, Any]]:
+    """Keep topic payload sizes predictable for the roadmap UI."""
+    if not items:
+        return []
+    return items[:count]
+
+
 # ============================================================================
 # 1. Assess Level
 # ============================================================================
@@ -115,7 +122,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
             r = await s_llm2.ainvoke(
                 GENERATE_SPEAKING_TOPICS_PROMPT.format_messages(**common)
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["speaking"] = _speaking()
 
     if section_focus in (None, "writing"):
@@ -126,7 +133,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
                     exam_variant=exam_variant, **common
                 )
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["writing"] = _writing()
 
     if section_focus in (None, "reading"):
@@ -135,7 +142,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
             r = await r_llm.ainvoke(
                 GENERATE_READING_TOPICS_PROMPT.format_messages(**common)
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["reading"] = _reading()
 
     if section_focus in (None, "listening"):
@@ -144,7 +151,7 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
             r = await l_llm.ainvoke(
                 GENERATE_LISTENING_TOPICS_PROMPT.format_messages(**common)
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["listening"] = _listening()
 
     # Run all in parallel
@@ -161,9 +168,11 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
             out[key] = result
             logger.info("{}: {} topics generated", key, len(result))
 
+    weakness_summary = ", ".join(state.get("weaknesses", [])) or "all four IELTS skills"
     study_plan = (
-        f"Focus on your weaknesses: {', '.join(state.get('weaknesses', []))}. "
-        f"Practice each section regularly and time yourself under exam conditions."
+        f"This roadmap gives you four practice items for speaking, writing, reading, and listening. "
+        f"Start with the weaker areas first: {weakness_summary}. "
+        f"Work through each item slowly, take notes on useful language, and focus on understanding the task before worrying about speed."
     )
 
     return {
