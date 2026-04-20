@@ -10,6 +10,8 @@ import {
   RiStarLine,
 } from "@remixicon/react";
 import type {
+  MockTestReport,
+  SectionScore,
   TopicGeneratorResult,
   TopicListeningTopic,
   TopicReadingTopic,
@@ -53,6 +55,28 @@ export interface Phase {
   description: string;
   topics: TopicGeneratorResult;
   status: "active" | "saved";
+  completed_topic_ids: string[];
+  evaluation_report: RoadmapEvaluationReport | null;
+}
+
+export interface RoadmapTopicEntry {
+  id: string;
+  section: "speaking" | "writing" | "reading" | "listening";
+  title: string;
+  detail: string;
+}
+
+export interface RoadmapEvaluationReport {
+  thread_id: string;
+  status: "completed";
+  section?: string | null;
+  overall_band?: number | null;
+  section_scores: SectionScore[];
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  final_report_markdown?: string | null;
+  completed_at: string;
 }
 
 export function getRoadmapStorageKey(userId?: string | null) {
@@ -83,10 +107,126 @@ export function loadRoadmapPhases(storageKey: string | null): Phase[] {
         listening_topics: [],
       },
       status: index === all.length - 1 ? "active" : "saved",
+      completed_topic_ids: Array.isArray(item?.completed_topic_ids)
+        ? item.completed_topic_ids.filter((value: unknown): value is string => typeof value === "string")
+        : [],
+      evaluation_report:
+        item?.evaluation_report && typeof item.evaluation_report === "object"
+          ? item.evaluation_report
+          : null,
     }));
   } catch {
     return [];
   }
+}
+
+export function saveRoadmapPhases(storageKey: string | null, phases: Phase[]) {
+  if (!storageKey) return;
+
+  if (phases.length === 0) {
+    localStorage.removeItem(storageKey);
+    return;
+  }
+
+  localStorage.setItem(storageKey, JSON.stringify(phases));
+}
+
+export function getPhaseTopicEntries(phase: Phase): RoadmapTopicEntry[] {
+  return [
+    ...phase.topics.speaking_topics.map((topic, index) => ({
+      id: `speaking-${index}`,
+      section: "speaking" as const,
+      title: topic.topic,
+      detail: `Speaking Part ${topic.part}`,
+    })),
+    ...phase.topics.writing_topics.map((topic, index) => ({
+      id: `writing-${index}`,
+      section: "writing" as const,
+      title: topic.task_type,
+      detail: `Writing Task ${topic.task}`,
+    })),
+    ...phase.topics.reading_topics.map((topic, index) => ({
+      id: `reading-${index}`,
+      section: "reading" as const,
+      title: topic.passage_theme,
+      detail: `Reading ${topic.difficulty}`,
+    })),
+    ...phase.topics.listening_topics.map((topic, index) => ({
+      id: `listening-${index}`,
+      section: "listening" as const,
+      title: topic.scenario,
+      detail: `Listening Section ${topic.section}`,
+    })),
+  ];
+}
+
+export function getPhaseCompletedCount(phase: Phase) {
+  const validIds = new Set(getPhaseTopicEntries(phase).map((item) => item.id));
+  return phase.completed_topic_ids.filter((id) => validIds.has(id)).length;
+}
+
+export function isPhasePracticeComplete(phase: Phase) {
+  const total = getPhaseTopicEntries(phase).length;
+  return total > 0 && getPhaseCompletedCount(phase) >= total;
+}
+
+export function isPhaseEvaluationComplete(phase: Phase) {
+  return Boolean(phase.evaluation_report);
+}
+
+export function getPhaseEvaluationState(phase: Phase) {
+  if (isPhaseEvaluationComplete(phase)) return "completed";
+  if (isPhasePracticeComplete(phase)) return "ready";
+  return "locked";
+}
+
+export function togglePhaseTopicCompletion(
+  phases: Phase[],
+  phaseId: number,
+  topicId: string
+): Phase[] {
+  return phases.map((phase) => {
+    if (phase.id !== phaseId) return phase;
+
+    const nextIds = phase.completed_topic_ids.includes(topicId)
+      ? phase.completed_topic_ids.filter((id) => id !== topicId)
+      : [...phase.completed_topic_ids, topicId];
+
+    return {
+      ...phase,
+      completed_topic_ids: nextIds,
+      evaluation_report: nextIds.length === getPhaseTopicEntries(phase).length
+        ? phase.evaluation_report
+        : null,
+    };
+  });
+}
+
+export function attachPhaseEvaluationReport(
+  phases: Phase[],
+  phaseId: number,
+  report: MockTestReport
+): Phase[] {
+  return phases.map((phase) => {
+    if (phase.id !== phaseId) return phase;
+
+    return {
+      ...phase,
+      completed_topic_ids: getPhaseTopicEntries(phase).map((item) => item.id),
+      evaluation_report: {
+        thread_id: report.thread_id,
+        status: "completed",
+        section: report.section,
+        overall_band: report.overall_band,
+        section_scores: report.section_scores,
+        strengths: report.strengths,
+        weaknesses: report.weaknesses,
+        recommendations: report.recommendations,
+        final_report_markdown: report.final_report_markdown,
+        completed_at: new Date().toISOString(),
+      },
+    };
+  });
 }
 
 function SectionHeader({

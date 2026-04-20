@@ -15,16 +15,21 @@ import {
   RiLoader4Line,
   RiMicLine,
   RiSendPlane2Line,
+  RiStopCircleLine,
+  RiVolumeUpLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
+import { getAssetUrl } from "@/lib/api-client";
 import {
   getDailyPlanById,
   submitActivityResponse,
   type DailyStudyPlan,
   type StudyActivity,
 } from "@/lib/ielts-api";
+import { speechToText } from "@/lib/speech-api";
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { toast } from "sonner";
 
 const sectionMeta: Record<string, { icon: typeof RiMicLine; color: string; bg: string; border: string }> = {
@@ -43,6 +48,11 @@ type CompletionState = {
   saved_response: boolean;
 } | null;
 
+type QuestionItem = {
+  prompt: string;
+  options: string[];
+};
+
 function isContentRecord(value: unknown): value is ContentRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -53,16 +63,17 @@ function parseContent(raw: unknown): ContentRecord {
   if (typeof raw === "string") {
     const trimmed = raw.trim();
     if (!trimmed) return {};
-
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
         const parsed = JSON.parse(trimmed);
-        return isContentRecord(parsed) ? parsed : { material: raw };
+        if (isContentRecord(parsed)) {
+          return parsed;
+        }
+        return { material: parsed };
       } catch {
         return { material: raw };
       }
     }
-
     return { material: raw };
   }
 
@@ -74,7 +85,13 @@ function parseContent(raw: unknown): ContentRecord {
 }
 
 function asStringArray(value: unknown): string[] {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text ? [text] : [];
+  }
+
   if (!Array.isArray(value)) return [];
+
   return value
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter(Boolean);
@@ -83,6 +100,42 @@ function asStringArray(value: unknown): string[] {
 function asObjectArray(value: unknown): ContentRecord[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isContentRecord);
+}
+
+function asQuestionArray(value: unknown, optionsValue: unknown): QuestionItem[] {
+  const optionEntries = isContentRecord(optionsValue) ? Object.entries(optionsValue) : [];
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item, index) => {
+    if (isContentRecord(item)) {
+      const promptValue = item.prompt ?? item.question ?? item.text;
+      if (typeof promptValue !== "string" || !promptValue.trim()) return [];
+      const options = Array.isArray(item.options)
+        ? item.options
+            .map((choice) => (typeof choice === "string" ? choice.trim() : ""))
+            .filter(Boolean)
+        : [];
+      return [{ prompt: promptValue.trim(), options }];
+    }
+
+    if (typeof item === "string" && item.trim()) {
+      const optionEntry = optionEntries[index]?.[1];
+      const options = Array.isArray(optionEntry)
+        ? optionEntry
+            .map((choice) => (typeof choice === "string" ? choice.trim() : ""))
+            .filter(Boolean)
+        : [];
+      return [{ prompt: item.trim(), options }];
+    }
+
+    return [];
+  });
+}
+
+function getText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text || null;
 }
 
 function renderRichText(value: unknown) {
@@ -97,7 +150,10 @@ function renderRichText(value: unknown) {
   }
 
   if (Array.isArray(value)) {
-    const items = value.map((item) => (typeof item === "string" ? item : JSON.stringify(item)));
+    const items = value
+      .map((item) => (typeof item === "string" ? item.trim() : JSON.stringify(item)))
+      .filter(Boolean);
+
     return (
       <ul className="space-y-2">
         {items.map((item, index) => (
@@ -145,19 +201,24 @@ function DetailBlock({
   );
 }
 
-function VocabularyGrid({ items }: { items: ContentRecord[] }) {
+function QuestionList({ items }: { items: QuestionItem[] }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="space-y-3">
       {items.map((item, index) => (
-        <div key={`vocab-${index}`} className="border border-border bg-background p-4">
-          <p className="text-base font-semibold">{typeof item.word === "string" ? item.word : `Word ${index + 1}`}</p>
-          {typeof item.meaning === "string" && (
-            <p className="mt-1 text-[15px] leading-7 text-foreground/85">{item.meaning}</p>
-          )}
-          {typeof item.example === "string" && (
-            <p className="mt-2 text-sm italic leading-6 text-muted-foreground">{item.example}</p>
+        <div key={`${item.prompt}-${index}`} className="border border-border bg-background p-4">
+          <p className="text-base font-semibold leading-7">
+            {index + 1}. {item.prompt}
+          </p>
+          {item.options.length > 0 && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {item.options.map((option, optionIndex) => (
+                <div key={`${option}-${optionIndex}`} className="border border-border bg-muted/20 px-3 py-2 text-sm text-foreground/85">
+                  {String.fromCharCode(65 + optionIndex)}. {option}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       ))}
@@ -165,20 +226,60 @@ function VocabularyGrid({ items }: { items: ContentRecord[] }) {
   );
 }
 
-function QuestionList({ items }: { items: ContentRecord[] }) {
+function VocabularyBoard({
+  words,
+  meanings,
+}: {
+  words: string[];
+  meanings: string[];
+}) {
+  if (words.length === 0 && meanings.length === 0) return null;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Words
+        </p>
+        <div className="space-y-2">
+          {words.map((word, index) => (
+            <div key={`${word}-${index}`} className="border border-border bg-background px-4 py-3 text-[15px] font-medium">
+              {word}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Meanings
+        </p>
+        <div className="space-y-2">
+          {meanings.map((meaning, index) => (
+            <div key={`${meaning}-${index}`} className="border border-border bg-background px-4 py-3 text-[15px] text-foreground/90">
+              {meaning}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SupportVocabulary({ items }: { items: ContentRecord[] }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3 md:grid-cols-2">
       {items.map((item, index) => (
-        <div key={`question-${index}`} className="border border-border bg-background p-4">
+        <div key={`support-vocab-${index}`} className="border border-border bg-background p-4">
           <p className="text-base font-semibold">
-            {index + 1}. {typeof item.prompt === "string" ? item.prompt : "Practice question"}
+            {typeof item.word === "string" ? item.word : `Word ${index + 1}`}
           </p>
-          {typeof item.answer_hint === "string" && (
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Hint: {item.answer_hint}
-            </p>
+          {typeof item.meaning === "string" && (
+            <p className="mt-1 text-[15px] leading-7 text-foreground/85">{item.meaning}</p>
+          )}
+          {typeof item.example === "string" && (
+            <p className="mt-2 text-sm italic leading-6 text-muted-foreground">{item.example}</p>
           )}
         </div>
       ))}
@@ -192,46 +293,56 @@ function ActivityContent({ activity }: { activity: StudyActivity }) {
   const sentenceFrames = asStringArray(content.sentence_frames);
   const checkpoints = asStringArray(content.checkpoints);
   const vocabulary = asObjectArray(content.vocabulary);
-  const questions = asObjectArray(content.questions);
+  const questions = asQuestionArray(content.questions, content.options);
 
-  const knownKeys = new Set([
-    "overview",
-    "instructions",
-    "study_goal",
-    "warm_up",
-    "material_title",
-    "material",
-    "vocabulary",
-    "questions",
-    "sentence_frames",
-    "checkpoints",
-    "sample_response",
-    "study_tip",
-    "next_step",
-  ]);
+  const overview = getText(content.overview);
+  const studyGoal = getText(content.study_goal);
+  const warmUp = getText(content.warm_up);
+  const studyTip = getText(content.study_tip);
+  const nextStep = getText(content.next_step);
+  const materialTitle = getText(content.material_title) ?? "Study Material";
+  const material = content.material;
 
-  const extraEntries = Object.entries(content).filter(([key]) => !knownKeys.has(key));
+  const materialRecord = isContentRecord(material) ? material : null;
+  const vocabularyWords = asStringArray(materialRecord?.words);
+  const vocabularyMeanings = asStringArray(
+    materialRecord?.meanings ??
+      (isContentRecord(content.options)
+        ? Object.values(content.options).filter((item): item is string => typeof item === "string")
+        : [])
+  );
+
+  const readingPassage =
+    getText(materialRecord?.passage) ??
+    (typeof material === "string" ? material : null);
+
+  const listeningContext =
+    getText(materialRecord?.audio) ??
+    getText(materialRecord?.prompt) ??
+    (typeof material === "string" ? material : null);
 
   return (
     <div className="space-y-5">
-      {typeof content.overview === "string" && (
+      {overview && (
         <div className="border border-primary/20 bg-primary/5 p-5">
-          <p className="text-lg leading-8 text-foreground/90">{content.overview}</p>
+          <p className="text-lg leading-8 text-foreground/90">{overview}</p>
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {typeof content.study_goal === "string" && (
-          <DetailBlock title="Study Goal">
-            <p className="text-[15px] leading-7 text-foreground/90">{content.study_goal}</p>
-          </DetailBlock>
-        )}
-        {typeof content.warm_up === "string" && (
-          <DetailBlock title="Warm Up">
-            <p className="text-[15px] leading-7 text-foreground/90">{content.warm_up}</p>
-          </DetailBlock>
-        )}
-      </div>
+      {(studyGoal || warmUp) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {studyGoal && (
+            <DetailBlock title="Study Goal">
+              <p className="text-[15px] leading-7 text-foreground/90">{studyGoal}</p>
+            </DetailBlock>
+          )}
+          {warmUp && (
+            <DetailBlock title="Warm Up">
+              <p className="text-[15px] leading-7 text-foreground/90">{warmUp}</p>
+            </DetailBlock>
+          )}
+        </div>
+      )}
 
       {instructions.length > 0 && (
         <DetailBlock title="Instructions">
@@ -248,19 +359,62 @@ function ActivityContent({ activity }: { activity: StudyActivity }) {
         </DetailBlock>
       )}
 
-      <DetailBlock title={typeof content.material_title === "string" ? content.material_title : "Study Material"}>
-        {renderRichText(content.material)}
-      </DetailBlock>
+      {activity.section === "vocabulary" ? (
+        <DetailBlock title={materialTitle}>
+          <VocabularyBoard words={vocabularyWords} meanings={vocabularyMeanings} />
+          {vocabularyWords.length === 0 && vocabularyMeanings.length === 0 && renderRichText(material)}
+        </DetailBlock>
+      ) : null}
+
+      {activity.section === "reading" ? (
+        <>
+          <DetailBlock title={materialTitle}>
+            {readingPassage ? (
+              <p className="whitespace-pre-wrap text-[15px] leading-7 text-foreground/90">{readingPassage}</p>
+            ) : (
+              renderRichText(material)
+            )}
+          </DetailBlock>
+          {questions.length > 0 && (
+            <DetailBlock title="Questions">
+              <QuestionList items={questions} />
+            </DetailBlock>
+          )}
+        </>
+      ) : null}
+
+      {activity.section === "listening" ? (
+        <>
+          {listeningContext && (
+            <DetailBlock title="Audio Focus">
+              <p className="text-[15px] leading-7 text-foreground/90">{listeningContext}</p>
+            </DetailBlock>
+          )}
+          {questions.length > 0 && (
+            <DetailBlock title="Questions">
+              <QuestionList items={questions} />
+            </DetailBlock>
+          )}
+        </>
+      ) : null}
+
+      {activity.section === "writing" || activity.section === "speaking" ? (
+        <DetailBlock title={materialTitle}>
+          {material && Object.keys(parseContent(material)).length > 0 && !Array.isArray(material) ? (
+            renderRichText(material)
+          ) : instructions.length > 0 ? (
+            <p className="text-[15px] leading-7 text-foreground/90">{instructions[0]}</p>
+          ) : (
+            <p className="text-[15px] leading-7 text-muted-foreground">
+              Read the prompt above and respond in your own words.
+            </p>
+          )}
+        </DetailBlock>
+      ) : null}
 
       {vocabulary.length > 0 && (
         <DetailBlock title="Vocabulary Support">
-          <VocabularyGrid items={vocabulary} />
-        </DetailBlock>
-      )}
-
-      {questions.length > 0 && (
-        <DetailBlock title="Practice Questions">
-          <QuestionList items={questions} />
+          <SupportVocabulary items={vocabulary} />
         </DetailBlock>
       )}
 
@@ -273,14 +427,6 @@ function ActivityContent({ activity }: { activity: StudyActivity }) {
               </div>
             ))}
           </div>
-        </DetailBlock>
-      )}
-
-      {typeof content.sample_response === "string" && (
-        <DetailBlock title="Sample Response">
-          <p className="whitespace-pre-wrap text-[15px] leading-7 text-foreground/90">
-            {content.sample_response}
-          </p>
         </DetailBlock>
       )}
 
@@ -297,32 +443,19 @@ function ActivityContent({ activity }: { activity: StudyActivity }) {
         </DetailBlock>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {typeof content.study_tip === "string" && (
-          <DetailBlock title="Study Tip">
-            <p className="text-[15px] leading-7 text-foreground/90">{content.study_tip}</p>
-          </DetailBlock>
-        )}
-        {typeof content.next_step === "string" && (
-          <DetailBlock title="Next Step">
-            <p className="text-[15px] leading-7 text-foreground/90">{content.next_step}</p>
-          </DetailBlock>
-        )}
-      </div>
-
-      {extraEntries.length > 0 && (
-        <DetailBlock title="More Details">
-          <div className="space-y-4">
-            {extraEntries.map(([key, value]) => (
-              <div key={key} className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  {key.replace(/_/g, " ")}
-                </p>
-                {renderRichText(value)}
-              </div>
-            ))}
-          </div>
-        </DetailBlock>
+      {(studyTip || nextStep) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {studyTip && (
+            <DetailBlock title="Study Tip">
+              <p className="text-[15px] leading-7 text-foreground/90">{studyTip}</p>
+            </DetailBlock>
+          )}
+          {nextStep && (
+            <DetailBlock title="Next Step">
+              <p className="text-[15px] leading-7 text-foreground/90">{nextStep}</p>
+            </DetailBlock>
+          )}
+        </div>
       )}
     </div>
   );
@@ -331,15 +464,15 @@ function ActivityContent({ activity }: { activity: StudyActivity }) {
 function getResponsePlaceholder(section: string) {
   switch (section) {
     case "writing":
-      return "Write your sentences here. Keep them short and clear.";
-    case "speaking":
-      return "Write what you would say, or make quick speaking notes here.";
+      return "Write your answer here. Aim for clear, simple English.";
     case "reading":
-      return "Write your answers or a short summary of what you understood.";
+      return "Write your answers to the reading questions here.";
     case "listening":
-      return "Write the main details you heard or your answers to the questions.";
+      return "Write what you heard and answer the listening questions here.";
+    case "vocabulary":
+      return "Write the matches or your own example sentences here.";
     default:
-      return "Write your notes, answers, or example sentences here.";
+      return "Write your response here.";
   }
 }
 
@@ -370,8 +503,11 @@ export default function DailyStudyDetailPage() {
   const [selectedActivity, setSelectedActivity] = useState<StudyActivity | null>(null);
   const [response, setResponse] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [quickCompleting, setQuickCompleting] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [hasPlayedListeningAudio, setHasPlayedListeningAudio] = useState(false);
   const [completion, setCompletion] = useState<CompletionState>(null);
+
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
   useEffect(() => {
     if (!planId || !userId) {
@@ -396,24 +532,48 @@ export default function DailyStudyDetailPage() {
       }
     }
 
-    load();
+    void load();
   }, [planId, userId]);
 
   useEffect(() => {
     if (!plan) return;
 
+    const preferredActivityId = activityIdParam || selectedActivity?.id;
     const nextSelected =
-      (activityIdParam && plan.activities.find((activity) => activity.id === activityIdParam)) ||
+      (preferredActivityId && plan.activities.find((activity) => activity.id === preferredActivityId)) ||
       plan.activities[0] ||
       null;
 
     setSelectedActivity(nextSelected);
   }, [plan, activityIdParam]);
 
+  useEffect(() => {
+    setResponse("");
+    setCompletion(null);
+    setHasPlayedListeningAudio(false);
+  }, [selectedActivity?.id]);
+
   const progressWidth = useMemo(() => {
     if (!plan || plan.total_count === 0) return 0;
     return Math.round((plan.completed_count / plan.total_count) * 100);
   }, [plan]);
+
+  const audioUrl = selectedActivity?.audio_url ? getAssetUrl(selectedActivity.audio_url) : null;
+  const isVocabularyActivity = selectedActivity?.section === "vocabulary";
+  const isSpeakingActivity = selectedActivity?.section === "speaking";
+  const isListeningActivity = selectedActivity?.section === "listening";
+  const listeningNeedsAudio = isListeningActivity && !selectedActivity?.is_completed;
+
+  const canSubmit = Boolean(
+    selectedActivity &&
+      !selectedActivity.is_completed &&
+      !isVocabularyActivity &&
+      !submitting &&
+      !transcribing &&
+      !isRecording &&
+      response.trim() &&
+      (!isListeningActivity || (audioUrl && hasPlayedListeningAudio))
+  );
 
   async function saveResponse(text: string) {
     if (!selectedActivity || !text.trim()) return;
@@ -441,24 +601,41 @@ export default function DailyStudyDetailPage() {
     await saveResponse(response);
   }
 
-  async function handleQuickComplete() {
-    if (!selectedActivity) return;
-    setQuickCompleting(true);
+  async function handleVocabularyComplete() {
+    await saveResponse("Reviewed vocabulary activity.");
+  }
+
+  async function handleToggleRecording() {
+    if (isRecording) {
+      setTranscribing(true);
+      try {
+        const blob = await stopRecording();
+        if (blob.size > 0) {
+          const transcript = await speechToText(blob);
+          setResponse((current) => (current ? `${current}\n${transcript}` : transcript));
+          toast.success("Voice answer captured.");
+        } else {
+          toast.error("No audio was recorded. Please try again.");
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error(
+          getUserFacingErrorMessage(
+            e,
+            "Couldn't process your voice answer. Please try again."
+          )
+        );
+      } finally {
+        setTranscribing(false);
+      }
+      return;
+    }
+
     try {
-      const result = await submitActivityResponse(selectedActivity.id, response.trim() || "Completed.");
-      setCompletion(result);
-      setPlan((current) => (current ? updateCompletedPlan(current, selectedActivity.id) : current));
-      toast.success("Activity marked as complete.");
+      await startRecording();
     } catch (e) {
       console.error(e);
-      toast.error(
-        getUserFacingErrorMessage(
-          e,
-          "Couldn't mark this activity as completed. Please try again."
-        )
-      );
-    } finally {
-      setQuickCompleting(false);
+      toast.error("Microphone access was blocked.");
     }
   }
 
@@ -525,11 +702,7 @@ export default function DailyStudyDetailPage() {
             return (
               <button
                 key={activity.id}
-                onClick={() => {
-                  setSelectedActivity(activity);
-                  setResponse("");
-                  setCompletion(null);
-                }}
+                onClick={() => setSelectedActivity(activity)}
                 className={cn(
                   "w-full border bg-card px-4 py-4 text-left transition-colors",
                   isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/30 hover:bg-accent/10"
@@ -583,6 +756,35 @@ export default function DailyStudyDetailPage() {
                   <h2 className="text-3xl font-semibold tracking-tight">{selectedActivity.title}</h2>
                 </div>
 
+                {isListeningActivity && (
+                  <div className="space-y-3 border border-blue-200 bg-blue-50/70 p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center border border-blue-200 bg-white">
+                        <RiVolumeUpLine className="h-5 w-5 text-blue-700" />
+                      </div>
+                      <div>
+                        <p className="text-lg font-semibold text-blue-900">Listen first</p>
+                        <p className="text-sm text-blue-800">
+                          IELTS-style listening practice should start with audio. Play the recording before you submit your answer.
+                        </p>
+                      </div>
+                    </div>
+
+                    {audioUrl ? (
+                      <audio
+                        controls
+                        className="w-full"
+                        src={audioUrl}
+                        onPlay={() => setHasPlayedListeningAudio(true)}
+                      />
+                    ) : (
+                      <div className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        Audio is still unavailable for this task, so answering is disabled until it is generated.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <ActivityContent activity={selectedActivity} />
 
                 {completion ? (
@@ -620,42 +822,106 @@ export default function DailyStudyDetailPage() {
                 ) : (
                   <div className="space-y-4 border-t border-border pt-6">
                     <div className="space-y-2">
-                      <p className="text-lg font-semibold">Write your work</p>
+                      <p className="text-lg font-semibold">
+                        {isVocabularyActivity
+                          ? "Review and continue"
+                          : isSpeakingActivity
+                            ? "Record your answer"
+                            : "Write your answer"}
+                      </p>
                       <p className="text-sm leading-6 text-muted-foreground">
-                        You can write full answers, short notes, or sentence practice here. This phase saves progress and does not score you.
+                        {isVocabularyActivity
+                          ? "Vocabulary review does not require a written answer. When you finish studying the set, mark it as reviewed."
+                          : isSpeakingActivity
+                          ? "Speaking practice is voice-only here. Record your answer, wait for the transcript, then submit it."
+                          : "Submit your own work to mark this activity complete. Answers are not shown before submission."}
                       </p>
                     </div>
 
-                    <Textarea
-                      value={response}
-                      onChange={(e) => setResponse(e.target.value)}
-                      placeholder={getResponsePlaceholder(selectedActivity.section)}
-                      className="min-h-[180px] resize-y border-border bg-background px-4 py-3 text-[15px] leading-7 shadow-none"
-                    />
+                    {isVocabularyActivity ? (
+                      <div className="space-y-4">
+                        <div className="border border-rose-200 bg-rose-50/60 p-5 text-sm leading-6 text-rose-900">
+                          Study the vocabulary, meanings, collocations, and usage notes above. This activity is review-based, so there is no answer box.
+                        </div>
+                        <Button
+                          onClick={handleVocabularyComplete}
+                          disabled={submitting}
+                          className="h-12 w-full text-base sm:w-auto sm:px-6"
+                        >
+                          {submitting ? (
+                            <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RiCheckLine className="mr-2 h-4 w-4" />
+                          )}
+                          Mark Vocabulary Reviewed
+                        </Button>
+                      </div>
+                    ) : isSpeakingActivity ? (
+                      <div className="space-y-4">
+                        <div className="flex flex-col items-center justify-center gap-4 border border-violet-200 bg-violet-50/60 px-6 py-8 text-center">
+                          <div className="text-sm font-medium text-violet-900">
+                            {transcribing
+                              ? "Transcribing your answer..."
+                              : isRecording
+                                ? "Recording in progress..."
+                                : "Use your microphone to answer this speaking task."}
+                          </div>
+                          <Button
+                            onClick={handleToggleRecording}
+                            disabled={submitting || transcribing}
+                            variant={isRecording ? "destructive" : "default"}
+                            className={cn("h-14 px-6 text-base", isRecording && "animate-pulse")}
+                          >
+                            {transcribing ? (
+                              <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
+                            ) : isRecording ? (
+                              <RiStopCircleLine className="mr-2 h-4 w-4" />
+                            ) : (
+                              <RiMicLine className="mr-2 h-4 w-4" />
+                            )}
+                            {transcribing ? "Processing Voice" : isRecording ? "Stop Recording" : "Start Recording"}
+                          </Button>
+                        </div>
 
-                    <div className="flex flex-col gap-3 sm:flex-row">
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-foreground">Transcript preview</p>
+                          <Textarea
+                            value={response}
+                            readOnly
+                            placeholder="Your speech transcript will appear here after recording."
+                            className="min-h-[160px] resize-y border-border bg-background px-4 py-3 text-[15px] leading-7 shadow-none"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <Textarea
+                        value={response}
+                        onChange={(e) => setResponse(e.target.value)}
+                        placeholder={getResponsePlaceholder(selectedActivity.section)}
+                        className="min-h-[180px] resize-y border-border bg-background px-4 py-3 text-[15px] leading-7 shadow-none"
+                      />
+                    )}
+
+                    {!isVocabularyActivity && listeningNeedsAudio && audioUrl && !hasPlayedListeningAudio && (
+                      <p className="text-sm text-muted-foreground">
+                        Play the listening audio once to unlock submission.
+                      </p>
+                    )}
+
+                    {!isVocabularyActivity && (
                       <Button
                         onClick={handleSubmitResponse}
-                        disabled={!response.trim() || submitting}
-                        className="h-12 flex-1 text-base"
+                        disabled={!canSubmit}
+                        className="h-12 w-full text-base sm:w-auto sm:px-6"
                       >
                         {submitting ? (
                           <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
                           <RiSendPlane2Line className="mr-2 h-4 w-4" />
                         )}
-                        Save My Work
+                        Submit Answer
                       </Button>
-                      <Button
-                        onClick={handleQuickComplete}
-                        disabled={quickCompleting || submitting}
-                        variant="outline"
-                        className="h-12 px-5 text-base"
-                      >
-                        {quickCompleting && <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />}
-                        Mark Complete
-                      </Button>
-                    </div>
+                    )}
                   </div>
                 )}
               </CardContent>

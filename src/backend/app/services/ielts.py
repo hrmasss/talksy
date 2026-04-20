@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -75,6 +76,180 @@ def _normalize_json_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _coerce_daily_content(value: Any) -> dict[str, Any]:
+    """Return a safe daily-study content object from DB JSON or stringified JSON."""
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"material": parsed}
+        except json.JSONDecodeError:
+            return {"material": value}
+
+    if isinstance(value, dict):
+        return dict(value)
+
+    if isinstance(value, list):
+        return {"material": value}
+
+    return {}
+
+
+def _normalize_daily_string_list(value: Any) -> list[str]:
+    """Return a clean string list from a daily-study field."""
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+
+    if not isinstance(value, list):
+        return []
+
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _normalize_daily_questions(
+    questions: Any,
+    options: Any,
+) -> list[dict[str, Any]]:
+    """Coerce old daily-study question payloads to a stable question list."""
+    option_entries = list(options.items()) if isinstance(options, dict) else []
+    normalized: list[dict[str, Any]] = []
+
+    if isinstance(questions, list):
+        for index, item in enumerate(questions):
+            entry: dict[str, Any] = {}
+            if isinstance(item, dict):
+                prompt = item.get("prompt") or item.get("question") or item.get("text")
+                if isinstance(prompt, str) and prompt.strip():
+                    entry["prompt"] = prompt.strip()
+                if isinstance(item.get("options"), list):
+                    entry["options"] = [
+                        str(choice).strip()
+                        for choice in item["options"]
+                        if str(choice).strip()
+                    ]
+            elif isinstance(item, str) and item.strip():
+                entry["prompt"] = item.strip()
+
+            if "prompt" not in entry:
+                continue
+
+            if "options" not in entry and index < len(option_entries):
+                _, option_value = option_entries[index]
+                if isinstance(option_value, list):
+                    entry["options"] = [
+                        str(choice).strip()
+                        for choice in option_value
+                        if str(choice).strip()
+                    ]
+
+            normalized.append(entry)
+
+    return normalized
+
+
+def _extract_example_text(value: str) -> str:
+    """Pull the example utterance from placeholder copy when possible."""
+    text = value.strip()
+    if not text:
+        return ""
+
+    quoted = re.findall(r"[\"']([^\"']{8,})[\"']", text)
+    if quoted:
+        return quoted[0].strip()
+
+    eg_match = re.search(r"\be\.g\.,?\s*(.+)$", text, flags=re.IGNORECASE)
+    if eg_match:
+        return eg_match.group(1).strip(" .()")
+
+    return text
+
+
+def _extract_daily_listening_script(content: dict[str, Any]) -> str:
+    """Choose the best available text source for listening TTS."""
+    material = content.get("material")
+    candidates: list[str] = []
+
+    if isinstance(material, dict):
+        for key in ("transcript", "audio_script", "script", "passage", "text", "prompt", "audio"):
+            value = material.get(key)
+            if isinstance(value, str) and value.strip():
+                candidates.append(value.strip())
+    elif isinstance(material, str) and material.strip():
+        candidates.append(material.strip())
+
+    for key in ("overview", "warm_up"):
+        value = content.get(key)
+        if isinstance(value, str) and value.strip():
+            candidates.append(value.strip())
+
+    for candidate in candidates:
+        extracted = _extract_example_text(candidate)
+        if extracted:
+            return extracted[:1200]
+
+    return ""
+
+
+def _sanitize_daily_activity_content(section: str, raw_content: Any) -> dict[str, Any]:
+    """Normalize old and new daily-study payloads and strip answer leakage."""
+    content = _coerce_daily_content(raw_content)
+
+    instructions = _normalize_daily_string_list(content.get("instructions"))
+    if instructions:
+        content["instructions"] = instructions
+
+    checkpoints = _normalize_daily_string_list(content.get("checkpoints"))
+    if checkpoints:
+        content["checkpoints"] = checkpoints
+
+    sentence_frames = _normalize_daily_string_list(content.get("sentence_frames"))
+    if sentence_frames:
+        content["sentence_frames"] = sentence_frames
+
+    if "study_tip" not in content and isinstance(content.get("tips"), str):
+        tip = content["tips"].strip()
+        if tip:
+            content["study_tip"] = tip
+
+    content["questions"] = _normalize_daily_questions(
+        content.get("questions"),
+        content.get("options"),
+    )
+
+    hidden_keys = {
+        "correct_answers",
+        "answer_key",
+        "answers",
+        "expected_answer",
+        "expected_answers",
+        "model_answer",
+        "sample_response",
+        "solution",
+        "solutions",
+    }
+    sanitized = {
+        key: value
+        for key, value in content.items()
+        if key not in hidden_keys and key != "tips"
+    }
+
+    if section == "listening":
+        material = sanitized.get("material")
+        if isinstance(material, dict):
+            sanitized["material"] = {
+                key: value
+                for key, value in material.items()
+                if key != "transcript"
+            }
+
+    return sanitized
+
+
 def _normalize_section_scores(value: Any) -> dict[str, float]:
     """Return a safe section score mapping from DB JSON or stringified JSON."""
     if isinstance(value, str):
@@ -103,27 +278,27 @@ REQUIRED_DAILY_ACTIVITY_ORDER: list[dict[str, str]] = [
     {
         "section": "vocabulary",
         "activity_type": "vocabulary_practice",
-        "title": "Basic Vocabulary Building",
+        "title": "Vocabulary in Context",
     },
     {
         "section": "listening",
         "activity_type": "mini_listening",
-        "title": "Simple Listening Comprehension",
+        "title": "Targeted Listening Drill",
     },
     {
         "section": "reading",
         "activity_type": "reading_passage",
-        "title": "Basic Reading Comprehension",
+        "title": "Analytical Reading Passage",
     },
     {
         "section": "writing",
         "activity_type": "writing_task",
-        "title": "Simple Sentence Writing",
+        "title": "Focused Writing Task",
     },
     {
         "section": "speaking",
         "activity_type": "speaking_prompt",
-        "title": "Introduction Practice",
+        "title": "Speaking Extension Prompt",
     },
 ]
 
@@ -464,7 +639,7 @@ class IELTSService:
         activities = await StudyActivity.select().where(
             StudyActivity.daily_plan == existing["id"]
         ).order_by(StudyActivity.created_at)
-        return self._format_daily_plan(existing, activities)
+        return await self._format_daily_plan(existing, activities, include_activity_media=True)
 
     async def get_or_generate_daily_plan(self, user_id: UUID) -> dict[str, Any]:
         """Get today's study plan, generating one if it doesn't exist (idempotent per day)."""
@@ -480,7 +655,7 @@ class IELTSService:
             activities = await StudyActivity.select().where(
                 StudyActivity.daily_plan == existing["id"]
             ).order_by(StudyActivity.created_at)
-            return self._format_daily_plan(existing, activities)
+            return await self._format_daily_plan(existing, activities, include_activity_media=True)
 
         # Generate new plan
         return await self._generate_daily_plan(user_id, today)
@@ -497,7 +672,7 @@ class IELTSService:
         activities = await StudyActivity.select().where(
             StudyActivity.daily_plan == plan_id
         ).order_by(StudyActivity.created_at)
-        return self._format_daily_plan(plan, activities)
+        return await self._format_daily_plan(plan, activities, include_activity_media=True)
 
     async def list_recent_daily_plans(self, user_id: UUID, days: int = 7) -> dict[str, Any]:
         """Return the most recent daily plans within the last N days."""
@@ -515,7 +690,7 @@ class IELTSService:
             activities = await StudyActivity.select().where(
                 StudyActivity.daily_plan == plan["id"]
             ).order_by(StudyActivity.created_at)
-            items.append(self._format_daily_plan(plan, activities))
+            items.append(await self._format_daily_plan(plan, activities, include_activity_media=False))
 
         return {"items": items}
 
@@ -607,7 +782,7 @@ class IELTSService:
 
         result = await DailyStudyPlan.select().where(DailyStudyPlan.id == plan_id).first()
         acts = await StudyActivity.select().where(StudyActivity.daily_plan == plan_id)
-        return self._format_daily_plan(result, acts)
+        return await self._format_daily_plan(result, acts, include_activity_media=True)
 
     async def submit_activity_response(
         self,
@@ -676,24 +851,76 @@ class IELTSService:
             "saved_response": completion.get("saved_response", True),
         }
 
-    def _format_daily_plan(self, plan: dict, activities: list) -> dict[str, Any]:
+    async def _ensure_daily_activity_audio_url(
+        self,
+        *,
+        activity_id: UUID,
+        section: str,
+        raw_content: Any,
+    ) -> str | None:
+        """Return a cached audio URL for listening activities when possible."""
+        if section != "listening":
+            return None
+
+        content = _coerce_daily_content(raw_content)
+        script = _extract_daily_listening_script(content)
+        if not script:
+            return None
+
+        filename = f"daily_study_{activity_id}.wav"
+        audio_root = settings.static_dir / "audio"
+        audio_root.mkdir(parents=True, exist_ok=True)
+        audio_path = audio_root / filename
+
+        if not audio_path.exists():
+            try:
+                audio_bytes = await text_to_speech(script)
+                audio_path.write_bytes(audio_bytes)
+                logger.info("Generated TTS for daily study listening activity {}", activity_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to generate daily-study listening audio for {}: {}",
+                    activity_id,
+                    exc,
+                )
+                return None
+
+        return f"/static/audio/{filename}"
+
+    async def _format_daily_plan(
+        self,
+        plan: dict,
+        activities: list,
+        *,
+        include_activity_media: bool,
+    ) -> dict[str, Any]:
+        formatted_activities: list[dict[str, Any]] = []
+        for activity in activities:
+            section = str(activity.get("section", "vocabulary"))
+            raw_content = activity.get("content", {})
+            formatted = {
+                "id": str(activity["id"]),
+                "section": section,
+                "activity_type": activity["activity_type"],
+                "title": activity["title"],
+                "content": _sanitize_daily_activity_content(section, raw_content),
+                "difficulty_level": activity.get("difficulty_level", 1),
+                "is_completed": activity.get("is_completed", False),
+                "ai_feedback": activity.get("ai_feedback", {}),
+                "band_score": activity.get("band_score"),
+            }
+            if include_activity_media:
+                formatted["audio_url"] = await self._ensure_daily_activity_audio_url(
+                    activity_id=activity["id"],
+                    section=section,
+                    raw_content=raw_content,
+                )
+            formatted_activities.append(formatted)
+
         return {
             "id": str(plan["id"]),
             "study_date": str(plan["study_date"]),
-            "activities": [
-                {
-                    "id": str(a["id"]),
-                    "section": a["section"],
-                    "activity_type": a["activity_type"],
-                    "title": a["title"],
-                    "content": a.get("content", {}),
-                    "difficulty_level": a.get("difficulty_level", 1),
-                    "is_completed": a.get("is_completed", False),
-                    "ai_feedback": a.get("ai_feedback", {}),
-                    "band_score": a.get("band_score"),
-                }
-                for a in activities
-            ],
+            "activities": formatted_activities,
             "completed_count": plan.get("completed_count", 0),
             "total_count": plan.get("total_count", 0),
             "is_completed": plan.get("is_completed", False),

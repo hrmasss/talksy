@@ -41,7 +41,7 @@ def get_daily_study_plan_prompt(
     weakest_section = min(safe_section_scores, key=safe_section_scores.get) if safe_section_scores else "writing"
     band_gap = target_band - current_band
 
-    return f"""You are an expert IELTS tutor creating a personalized, student-friendly IELTS daily study plan.
+    return f"""You are an expert IELTS tutor creating a personalized IELTS daily study plan.
 
 STUDENT PROFILE:
 - Current Estimated Band: {current_band}
@@ -66,20 +66,25 @@ RECENT HISTORY:
 GENERATION RULES:
 1. This is a PRACTICE phase, not an evaluation phase. Do not ask the student to take a test.
 2. Allocate MORE support to weak areas, especially {weakest_section}.
-3. Use simple English, short instructions, and encouraging language.
-4. Activities must feel safe for a beginner if the band is low, while still moving toward band {target_band}.
+3. Use clear instructions and encouraging language, but match the intellectual level to the student's band.
+4. Activities must match the student's current level and stretch them toward band {target_band}. Do not default to beginner material unless the current band is genuinely low.
 5. Total activities should fill approximately {practice_time_minutes} minutes.
 6. Every activity must be fully self-contained and easy to complete on a study site.
 7. Keep materials readable on screen: short sections, bullets, and practical examples.
 8. Avoid advanced jargon unless you explain it clearly.
-9. Make the plan foundational first, then gradually harder.
+9. Make the plan challenging but realistic for the student's level.
+10. Avoid childish or extremely basic content such as matching words like apple, dog, car, or house to obvious meanings.
+11. Vocabulary tasks must focus on higher-value IELTS vocabulary: collocations, paraphrasing, context meaning, register, word choice, or sentence completion.
+12. Reading and listening tasks should usually require understanding, inference, detail selection, paraphrase recognition, or main-idea tracking rather than only recall of one obvious fact.
+13. Writing tasks should require a developed response, not only one simple sentence, unless the student's current band is below 4.5.
+14. Speaking tasks should push the learner to answer with developed ideas and examples, not only name/basic-introduction prompts, unless the student's current band is below 4.5.
 
 Generate EXACTLY 5 activities in this EXACT order:
-1. section="vocabulary", activity_type="vocabulary_practice", title="Basic Vocabulary Building"
-2. section="listening", activity_type="mini_listening", title="Simple Listening Comprehension"
-3. section="reading", activity_type="reading_passage", title="Basic Reading Comprehension"
-4. section="writing", activity_type="writing_task", title="Simple Sentence Writing"
-5. section="speaking", activity_type="speaking_prompt", title="Introduction Practice"
+1. section="vocabulary", activity_type="vocabulary_practice", title="Vocabulary in Context"
+2. section="listening", activity_type="mini_listening", title="Targeted Listening Drill"
+3. section="reading", activity_type="reading_passage", title="Analytical Reading Passage"
+4. section="writing", activity_type="writing_task", title="Focused Writing Task"
+5. section="speaking", activity_type="speaking_prompt", title="Speaking Extension Prompt"
 
 Each activity must include practical details using this student-friendly content structure:
 - "overview": one short supportive sentence explaining the activity

@@ -39,6 +39,12 @@ import { useOnboardingGate } from "./onboarding-gate";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { speechToText } from "@/lib/speech-api";
 import { playStreamingTextToSpeech, type StreamingAudioPlayback } from "@/lib/tts-stream-player";
+import {
+  attachPhaseEvaluationReport,
+  getRoadmapStorageKey,
+  loadRoadmapPhases,
+  saveRoadmapPhases,
+} from "./roadmap-shared";
 
 type Phase = "setup" | "test" | "report" | "history";
 
@@ -56,7 +62,9 @@ const AUDIO_SECTIONS = new Set(["listening", "speaking"]);
 export default function MockTestPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
-  const initialSection = searchParams.get("section") || "";
+  const roadmapEvaluation = searchParams.get("roadmapEvaluation") === "1";
+  const roadmapPhaseId = Number(searchParams.get("roadmapPhaseId"));
+  const initialSection = roadmapEvaluation ? "full" : searchParams.get("section") || "";
   const { requireOnboarding } = useOnboardingGate();
 
   const [phase, setPhase] = useState<Phase>("setup");
@@ -97,6 +105,20 @@ export default function MockTestPage() {
   const streamingAudioRef = useRef<StreamingAudioPlayback | null>(null);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+
+  useEffect(() => {
+    if (!roadmapEvaluation) return;
+    setSelectedSection("full");
+  }, [roadmapEvaluation]);
+
+  useEffect(() => {
+    if (!user || !roadmapEvaluation || !report || !Number.isFinite(roadmapPhaseId)) return;
+
+    const storageKey = getRoadmapStorageKey(user.id);
+    const phases = loadRoadmapPhases(storageKey);
+    const updated = attachPhaseEvaluationReport(phases, roadmapPhaseId, report);
+    saveRoadmapPhases(storageKey, updated);
+  }, [report, roadmapEvaluation, roadmapPhaseId, user]);
 
   // ── Check for active / past sessions on mount ────────────
   useEffect(() => {
@@ -413,7 +435,9 @@ export default function MockTestPage() {
           )}
         </div>
         <p className="mb-6 text-sm text-muted-foreground">
-          Choose a section to practice or take a full test.
+          {roadmapEvaluation
+            ? "This full mock test will be saved as the evaluation for your current roadmap phase."
+            : "Choose a section to practice or take a full test."}
         </p>
 
         {/* Resume Banner */}
@@ -450,13 +474,19 @@ export default function MockTestPage() {
           {sections.map((s) => (
             <button
               key={s.key}
-              onClick={() => setSelectedSection(s.key)}
+              onClick={() => {
+                if (!roadmapEvaluation) {
+                  setSelectedSection(s.key);
+                }
+              }}
               className={cn(
                 "flex items-center gap-3 rounded-xl border p-4 text-left transition-all",
                 selectedSection === s.key
                   ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-border/50 hover:border-border"
+                  : "border-border/50 hover:border-border",
+                roadmapEvaluation && s.key !== "full" && "cursor-not-allowed opacity-50"
               )}
+              disabled={roadmapEvaluation && s.key !== "full"}
             >
               <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", s.bg)}>
                 <s.icon className={cn("h-5 w-5", s.color)} />
@@ -464,7 +494,11 @@ export default function MockTestPage() {
               <div>
                 <div className="font-medium">{s.label}</div>
                 <div className="text-xs text-muted-foreground">
-                  {s.key === "full" ? "All 4 sections" : `${s.label} section only`}
+                  {roadmapEvaluation && s.key === "full"
+                    ? "Required roadmap evaluation"
+                    : s.key === "full"
+                      ? "All 4 sections"
+                      : `${s.label} section only`}
                 </div>
               </div>
             </button>
@@ -482,7 +516,7 @@ export default function MockTestPage() {
           ) : (
             <RiFlashlightLine className="mr-2 h-4 w-4" />
           )}
-          Start Test
+          {roadmapEvaluation ? "Start Phase Evaluation" : "Start Test"}
         </Button>
       </div>
     );
@@ -755,10 +789,15 @@ export default function MockTestPage() {
             }}
           >
             <RiArrowLeftLine className="mr-2 h-4 w-4" />
-            Take Another Test
+            {roadmapEvaluation ? "Retake Evaluation" : "Take Another Test"}
           </Button>
-          <Link to="/app/dashboard" className="flex-1">
-            <Button className="w-full">Go to Dashboard</Button>
+          <Link
+            to={roadmapEvaluation && Number.isFinite(roadmapPhaseId) ? `/app/roadmap/${roadmapPhaseId}` : "/app/dashboard"}
+            className="flex-1"
+          >
+            <Button className="w-full">
+              {roadmapEvaluation ? "Back to Roadmap" : "Go to Dashboard"}
+            </Button>
           </Link>
         </div>
       </div>

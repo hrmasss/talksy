@@ -92,6 +92,7 @@ export interface StudyActivity {
   is_completed: boolean;
   ai_feedback: Record<string, unknown>;
   band_score?: number | null;
+  audio_url?: string | null;
 }
 
 export interface DailyStudyPlan {

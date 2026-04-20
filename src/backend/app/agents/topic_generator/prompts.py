@@ -87,6 +87,9 @@ Generate EXACTLY {num_topics} practice topics that:
    - a short practice_focus
    - a simple answer_framework list
    - a short common_mistakes list
+8. Keep speaking expectations realistic: one answer should never imply more than 5 minutes of speaking time.
+9. For Part 1 and Part 3, guide answers toward concise development, usually under 1 minute per answer.
+10. For Part 2, keep the framework aligned with a 1-2 minute long turn, not a long speech.
 
 Respond with a JSON array of topic objects."""),
     ("user", """User band range: {band_range}

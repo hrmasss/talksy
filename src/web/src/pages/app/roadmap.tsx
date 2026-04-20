@@ -22,8 +22,12 @@ import { generateTopics } from "@/lib/ielts-api";
 import { toast } from "sonner";
 import {
   getPhaseTitle,
+  getPhaseCompletedCount,
+  getPhaseEvaluationState,
   getRoadmapStorageKey,
+  isPhaseEvaluationComplete,
   loadRoadmapPhases,
+  saveRoadmapPhases,
   sectionMeta,
   type Phase,
 } from "./roadmap-shared";
@@ -45,12 +49,7 @@ export default function RoadmapPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!roadmapStorageKey) return;
-    if (phases.length > 0) {
-      localStorage.setItem(roadmapStorageKey, JSON.stringify(phases));
-      return;
-    }
-    localStorage.removeItem(roadmapStorageKey);
+    saveRoadmapPhases(roadmapStorageKey, phases);
   }, [phases, roadmapStorageKey]);
 
   useEffect(() => {
@@ -61,9 +60,14 @@ export default function RoadmapPage() {
     () => phases.find((phase) => phase.status === "active") ?? phases.at(-1) ?? null,
     [phases]
   );
+  const canGenerateNextPhase = !activePhase || isPhaseEvaluationComplete(activePhase);
 
   async function handleGenerate() {
     if (!user || requireOnboarding()) return;
+    if (!canGenerateNextPhase) {
+      toast.error("Finish the current roadmap and complete its evaluation exam before unlocking the next phase.");
+      return;
+    }
 
     setGenerating(true);
     setError("");
@@ -86,6 +90,8 @@ export default function RoadmapPage() {
           `Focus on: ${result.weaknesses.slice(0, 2).join(", ") || "all sections"}`,
         topics: result,
         status: "active",
+        completed_topic_ids: [],
+        evaluation_report: null,
       };
 
       setPhases((current) => [
@@ -120,8 +126,8 @@ export default function RoadmapPage() {
                 </h1>
                 <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
                   This roadmap gives the student 4 Speaking, 4 Writing, 4 Reading, and
-                  4 Listening practice items in one place. It is for guided practice only,
-                  so there is no evaluation gate in this phase.
+                  4 Listening practice items in one place. Finish the roadmap first,
+                  then take an evaluation exam to unlock the next phase.
                 </p>
               </div>
 
@@ -185,7 +191,7 @@ export default function RoadmapPage() {
               <div className="space-y-4 text-[15px] leading-7 text-foreground/90">
                 <p>Each roadmap item includes practical guidance, student-friendly language, and enough detail to start studying immediately.</p>
                 <p>Speaking and writing include structure help. Reading and listening include strategy guidance instead of only topic names.</p>
-                <p>The roadmap is saved locally, so you can generate a fresh version later and compare versions as the product improves.</p>
+                <p>The roadmap is saved locally, and every new phase should come only after the current phase has been practiced and evaluated.</p>
               </div>
             </div>
           </CardContent>
@@ -205,25 +211,31 @@ export default function RoadmapPage() {
             <h1 className="text-4xl font-semibold tracking-tight">Study Roadmap</h1>
             <p className="mt-2 max-w-3xl text-lg leading-8 text-muted-foreground">
               Every roadmap version includes 4 Speaking, 4 Writing, 4 Reading, and
-              4 Listening items with more explanation and no quiz gate.
+              4 Listening items. The next phase unlocks only after roadmap completion and evaluation.
             </p>
           </div>
         </div>
 
-        <Button className="h-12 px-6 text-base" onClick={handleGenerate} disabled={generating}>
+        <Button className="h-12 px-6 text-base" onClick={handleGenerate} disabled={generating || !canGenerateNextPhase}>
           {generating ? (
             <>
               <RiLoader4Line className="h-4 w-4 animate-spin" />
-              Updating roadmap...
+              Building next phase...
             </>
           ) : (
             <>
               <RiFlashlightLine className="h-4 w-4" />
-              Generate New Version
+              Generate Next Phase
             </>
           )}
         </Button>
       </div>
+
+      {!canGenerateNextPhase && activePhase && (
+        <div className="mb-6 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Complete all roadmap items in Roadmap {activePhase.id}, then finish its evaluation exam to unlock the next phase.
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -240,6 +252,19 @@ export default function RoadmapPage() {
                   Current Version
                 </Badge>
                 <span className="text-sm text-muted-foreground">Roadmap {activePhase.id}</span>
+                <Badge variant="outline" className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+                  {getPhaseCompletedCount(activePhase)}/{roadmapSections.reduce((sum, section) => sum + (activePhase.topics[`${section.key}_topics` as const]?.length ?? 0), 0)} Items Done
+                </Badge>
+                <Badge
+                  variant={getPhaseEvaluationState(activePhase) === "completed" ? "default" : "secondary"}
+                  className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]"
+                >
+                  {getPhaseEvaluationState(activePhase) === "completed"
+                    ? "Evaluation Done"
+                    : getPhaseEvaluationState(activePhase) === "ready"
+                      ? "Exam Unlocked"
+                      : "Practice In Progress"}
+                </Badge>
               </div>
               <h2 className="text-2xl font-semibold">{activePhase.title}</h2>
               <p className="max-w-3xl text-[15px] leading-7 text-foreground/85">
@@ -282,6 +307,19 @@ export default function RoadmapPage() {
                           {isActive ? "Current" : "Saved"}
                         </Badge>
                         <span className="text-sm text-muted-foreground">Roadmap {phase.id}</span>
+                        <Badge variant="outline" className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+                          {getPhaseCompletedCount(phase)}/{roadmapSections.reduce((sum, section) => sum + (phase.topics[`${section.key}_topics` as const]?.length ?? 0), 0)} Items Done
+                        </Badge>
+                        <Badge
+                          variant={getPhaseEvaluationState(phase) === "completed" ? "default" : "secondary"}
+                          className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]"
+                        >
+                          {getPhaseEvaluationState(phase) === "completed"
+                            ? "Evaluation Done"
+                            : getPhaseEvaluationState(phase) === "ready"
+                              ? "Exam Unlocked"
+                              : "Practice In Progress"}
+                        </Badge>
                       </div>
                       <CardTitle className="text-2xl font-semibold">{phase.title}</CardTitle>
                       <p className="max-w-3xl text-[15px] leading-7 text-muted-foreground">
