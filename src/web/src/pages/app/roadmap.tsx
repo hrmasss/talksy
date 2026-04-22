@@ -1,116 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
+  RiArrowRightLine,
   RiBookOpenLine,
-  RiCheckLine,
   RiEdit2Line,
   RiFlashlightLine,
   RiHeadphoneLine,
   RiLoader4Line,
-  RiLockLine,
   RiMicLine,
-  RiPlayLine,
-  RiQuestionLine,
   RiRoadMapLine,
-  RiStarLine,
-  RiTrophyLine,
+  RiStackLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getUserFacingErrorMessage } from "@/lib/app-errors";
-import { useOnboardingGate } from "./layout";
-import { generateTopics, type TopicGeneratorResult } from "@/lib/ielts-api";
+import { useOnboardingGate } from "./onboarding-gate";
+import { generateTopics } from "@/lib/ielts-api";
 import { toast } from "sonner";
 import {
   getPhaseTitle,
+  getPhaseCompletedCount,
+  getPhaseEvaluationState,
   getRoadmapStorageKey,
+  isPhaseEvaluationComplete,
   loadRoadmapPhases,
+  saveRoadmapPhases,
   sectionMeta,
   type Phase,
-  type PhaseQuiz,
 } from "./roadmap-shared";
 
-function generateQuizzes(topics: TopicGeneratorResult): PhaseQuiz[] {
-  const quizzes: PhaseQuiz[] = [];
-
-  for (const topic of topics.speaking_topics.slice(0, 1)) {
-    quizzes.push({
-      question: `In IELTS Speaking Part ${topic.part}, what is the best approach for the topic "${topic.topic}"?`,
-      options: [
-        "Give one-word answers to save time",
-        `Use vocabulary like: ${topic.vocabulary_hints.slice(0, 3).join(", ")}`,
-        "Speak as fast as possible without pausing",
-        "Only answer exactly what is asked, nothing more",
-      ],
-      correctIndex: 1,
-    });
-  }
-
-  for (const topic of topics.writing_topics.slice(0, 1)) {
-    quizzes.push({
-      question: `For a "${topic.task_type}" writing task, what should you focus on?`,
-      options: [
-        "Write as many words as possible",
-        "Use only simple vocabulary to avoid mistakes",
-        `Structure your response with a clear outline and use key vocabulary: ${topic.key_vocabulary.slice(0, 2).join(", ")}`,
-        "Copy the prompt wording as much as possible",
-      ],
-      correctIndex: 2,
-    });
-  }
-
-  for (const topic of topics.reading_topics.slice(0, 1)) {
-    quizzes.push({
-      question: `When answering "${topic.question_types[0] || "comprehension"}" questions about "${topic.passage_theme}", what strategy works best?`,
-      options: [
-        "Read every word carefully before looking at questions",
-        "Scan for keywords and locate specific information",
-        "Guess answers based on general knowledge",
-        "Skip difficult passages entirely",
-      ],
-      correctIndex: 1,
-    });
-  }
-
-  for (const topic of topics.listening_topics.slice(0, 1)) {
-    quizzes.push({
-      question: `In IELTS Listening Section ${topic.section} about "${topic.scenario}", what should you do?`,
-      options: [
-        "Write answers only after the recording ends",
-        "Read the questions before the audio plays and predict answers",
-        "Focus only on the first speaker",
-        "Ignore any instructions given in the audio",
-      ],
-      correctIndex: 1,
-    });
-  }
-
-  if (topics.weaknesses.length > 0) {
-    quizzes.push({
-      question: `Based on your profile, "${topics.weaknesses[0]}" is an area to improve. What's the best approach?`,
-      options: [
-        "Avoid practicing this area",
-        "Focus all practice on strengths instead",
-        "Practice consistently with targeted exercises and review feedback",
-        "Wait until closer to the exam date",
-      ],
-      correctIndex: 2,
-    });
-  }
-
-  return quizzes;
-}
+const roadmapSections = [
+  { key: "speaking", label: "Speaking", icon: RiMicLine },
+  { key: "writing", label: "Writing", icon: RiEdit2Line },
+  { key: "reading", label: "Reading", icon: RiBookOpenLine },
+  { key: "listening", label: "Listening", icon: RiHeadphoneLine },
+] as const;
 
 export default function RoadmapPage() {
   const { user } = useAuth();
@@ -120,30 +47,27 @@ export default function RoadmapPage() {
   const [phases, setPhases] = useState<Phase[]>(() => loadRoadmapPhases(roadmapStorageKey));
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
-  const [quizPhaseId, setQuizPhaseId] = useState<number | null>(null);
-  const [quizIndex, setQuizIndex] = useState(0);
-  const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
-  const [quizComplete, setQuizComplete] = useState(false);
-  const [quizScore, setQuizScore] = useState(0);
 
   useEffect(() => {
-    if (!roadmapStorageKey) return;
-    if (phases.length > 0) {
-      localStorage.setItem(roadmapStorageKey, JSON.stringify(phases));
-      return;
-    }
-    localStorage.removeItem(roadmapStorageKey);
+    saveRoadmapPhases(roadmapStorageKey, phases);
   }, [phases, roadmapStorageKey]);
 
   useEffect(() => {
     setPhases(loadRoadmapPhases(roadmapStorageKey));
   }, [roadmapStorageKey]);
 
-  const activePhase = phases.find((phase) => phase.status === "active");
-  const completedCount = phases.filter((phase) => phase.status === "completed").length;
+  const activePhase = useMemo(
+    () => phases.find((phase) => phase.status === "active") ?? phases.at(-1) ?? null,
+    [phases]
+  );
+  const canGenerateNextPhase = !activePhase || isPhaseEvaluationComplete(activePhase);
 
   async function handleGenerate() {
     if (!user || requireOnboarding()) return;
+    if (!canGenerateNextPhase) {
+      toast.error("Finish the current roadmap and complete its evaluation exam before unlocking the next phase.");
+      return;
+    }
 
     setGenerating(true);
     setError("");
@@ -159,19 +83,22 @@ export default function RoadmapPage() {
       const nextPhaseNum = phases.length + 1;
       const newPhase: Phase = {
         id: nextPhaseNum,
-        title: `Phase ${nextPhaseNum}: ${getPhaseTitle(nextPhaseNum, result)}`,
+        title: `${getPhaseTitle(nextPhaseNum, result)}`,
         description:
           result.assessment_summary ||
           result.study_plan_notes ||
           `Focus on: ${result.weaknesses.slice(0, 2).join(", ") || "all sections"}`,
         topics: result,
-        status: phases.length === 0 ? "active" : "locked",
-        quizzes: generateQuizzes(result),
-        quizScore: null,
+        status: "active",
+        completed_topic_ids: [],
+        evaluation_report: null,
       };
 
-      setPhases((current) => [...current, newPhase]);
-      toast.success("Roadmap phase generated.");
+      setPhases((current) => [
+        ...current.map((phase) => ({ ...phase, status: "saved" as const })),
+        newPhase,
+      ]);
+      toast.success("Your roadmap is ready.");
     } catch (e) {
       const message = getUserFacingErrorMessage(
         e,
@@ -184,389 +111,270 @@ export default function RoadmapPage() {
     }
   }
 
-  function handleStartQuiz(phaseId: number) {
-    setQuizPhaseId(phaseId);
-    setQuizIndex(0);
-    setQuizAnswers([]);
-    setQuizComplete(false);
-    setQuizScore(0);
-  }
-
-  function handleQuizAnswer(optionIndex: number) {
-    const phase = phases.find((item) => item.id === quizPhaseId);
-    if (!phase) return;
-
-    const newAnswers = [...quizAnswers, optionIndex];
-    setQuizAnswers(newAnswers);
-
-    if (newAnswers.length >= phase.quizzes.length) {
-      let correct = 0;
-      phase.quizzes.forEach((question, index) => {
-        if (newAnswers[index] === question.correctIndex) correct++;
-      });
-
-      const score = Math.round((correct / phase.quizzes.length) * 100);
-      setQuizScore(score);
-      setQuizComplete(true);
-
-      if (score >= 60) {
-        setPhases((current) =>
-          current.map((item, itemIndex) => {
-            if (item.id === quizPhaseId) return { ...item, status: "completed", quizScore: score };
-            if (itemIndex > 0 && current[itemIndex - 1].id === quizPhaseId && item.status === "locked") {
-              return { ...item, status: "active" };
-            }
-            return item;
-          })
-        );
-        return;
-      }
-
-      setPhases((current) =>
-        current.map((item) => (item.id === quizPhaseId ? { ...item, quizScore: score } : item))
-      );
-      return;
-    }
-
-    setQuizIndex(newAnswers.length);
-  }
-
-  function handleCloseQuiz() {
-    setQuizPhaseId(null);
-    setQuizComplete(false);
-  }
-
-  const currentQuiz =
-    quizPhaseId != null
-      ? phases.find((phase) => phase.id === quizPhaseId)?.quizzes[quizIndex]
-      : null;
-  const totalQuizQuestions =
-    quizPhaseId != null
-      ? phases.find((phase) => phase.id === quizPhaseId)?.quizzes.length ?? 0
-      : 0;
-
   if (phases.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-12">
-        <div className="text-center">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10">
-            <RiRoadMapLine className="h-10 w-10 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">Your Learning Roadmap</h1>
-          <p className="mt-3 text-muted-foreground">
-            AI will generate a personalized study roadmap for you, broken into phases.
-            Complete each phase&apos;s content and pass the evaluation quiz to unlock the next phase.
-          </p>
+      <div className="mx-auto max-w-5xl px-6 py-10">
+        <Card className="overflow-hidden border border-border bg-card shadow-none">
+          <CardContent className="grid gap-10 p-8 lg:grid-cols-[1.1fr_0.9fr] lg:p-10">
+            <div className="space-y-6">
+              <div className="flex h-16 w-16 items-center justify-center border border-primary/20 bg-primary/10">
+                <RiRoadMapLine className="h-9 w-9 text-primary" />
+              </div>
+              <div className="space-y-4">
+                <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-balance">
+                  Build a study roadmap with detailed practice for all four IELTS skills.
+                </h1>
+                <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
+                  This roadmap gives the student 4 Speaking, 4 Writing, 4 Reading, and
+                  4 Listening practice items in one place. Finish the roadmap first,
+                  then take an evaluation exam to unlock the next phase.
+                </p>
+              </div>
 
-          {error && (
-            <div className="mx-auto mt-4 max-w-sm rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
-              {error}
+              {error && (
+                <div className="max-w-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {roadmapSections.map((section) => {
+                  const meta = sectionMeta[section.key];
+                  return (
+                    <div
+                      key={section.key}
+                      className="flex items-center gap-4 border border-border bg-background px-4 py-4"
+                    >
+                      <div
+                        className={cn(
+                          "flex h-11 w-11 items-center justify-center border",
+                          meta.bg,
+                          meta.border
+                        )}
+                      >
+                        <section.icon className={cn("h-5 w-5", meta.color)} />
+                      </div>
+                      <div>
+                        <div className="text-base font-semibold">{section.label}</div>
+                        <div className="text-sm text-muted-foreground">4 detailed practice items</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Button size="lg" className="h-12 px-6 text-base" onClick={handleGenerate} disabled={generating}>
+                {generating ? (
+                  <>
+                    <RiLoader4Line className="h-4 w-4 animate-spin" />
+                    Building roadmap...
+                  </>
+                ) : (
+                  <>
+                    <RiFlashlightLine className="h-4 w-4" />
+                    Generate Roadmap
+                  </>
+                )}
+              </Button>
             </div>
-          )}
 
-          <div className="mt-8 grid gap-3 text-left sm:grid-cols-2">
-            {Object.entries(sectionMeta).map(([key, meta]) => (
-              <div
-                key={key}
-                className="flex items-center gap-3 rounded-xl border border-border/50 p-3"
-              >
-                <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", meta.bg)}>
-                  <meta.icon className={cn("h-4 w-4", meta.color)} />
+            <div className="border border-border bg-muted/20 p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center border border-border bg-background">
+                  <RiStackLine className="h-5 w-5 text-foreground" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium capitalize">{key}</div>
-                  <div className="text-xs text-muted-foreground">Topics & practice</div>
+                  <h2 className="text-lg font-semibold">What the student gets</h2>
+                  <p className="text-sm text-muted-foreground">Clear practice, not a confusing dump of prompts</p>
                 </div>
               </div>
-            ))}
-          </div>
-
-          <Button size="lg" className="mt-8 gap-2" onClick={handleGenerate} disabled={generating}>
-            {generating ? (
-              <>
-                <RiLoader4Line className="h-4 w-4 animate-spin" />
-                Generating Phase 1...
-              </>
-            ) : (
-              <>
-                <RiFlashlightLine className="h-4 w-4" />
-                Generate My Roadmap
-              </>
-            )}
-          </Button>
-        </div>
+              <div className="space-y-4 text-[15px] leading-7 text-foreground/90">
+                <p>Each roadmap item includes practical guidance, student-friendly language, and enough detail to start studying immediately.</p>
+                <p>Speaking and writing include structure help. Reading and listening include strategy guidance instead of only topic names.</p>
+                <p>The roadmap is saved locally, and every new phase should come only after the current phase has been practiced and evaluated.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Learning Roadmap</h1>
-          <p className="text-sm text-muted-foreground">
-            {completedCount} of {phases.length} phases completed
-          </p>
+    <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
+        <div className="space-y-3">
+          <Badge variant="outline" className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
+            Roadmap Library
+          </Badge>
+          <div>
+            <h1 className="text-4xl font-semibold tracking-tight">Study Roadmap</h1>
+            <p className="mt-2 max-w-3xl text-lg leading-8 text-muted-foreground">
+              Every roadmap version includes 4 Speaking, 4 Writing, 4 Reading, and
+              4 Listening items. The next phase unlocks only after roadmap completion and evaluation.
+            </p>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          onClick={handleGenerate}
-          disabled={generating || (activePhase != null && activePhase.status !== "completed")}
-        >
+
+        <Button className="h-12 px-6 text-base" onClick={handleGenerate} disabled={generating || !canGenerateNextPhase}>
           {generating ? (
-            <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
+            <>
+              <RiLoader4Line className="h-4 w-4 animate-spin" />
+              Building next phase...
+            </>
           ) : (
-            <RiFlashlightLine className="h-3.5 w-3.5" />
+            <>
+              <RiFlashlightLine className="h-4 w-4" />
+              Generate Next Phase
+            </>
           )}
-          {phases.length === 0 ? "Generate" : "Add Phase"}
         </Button>
       </div>
 
+      {!canGenerateNextPhase && activePhase && (
+        <div className="mb-6 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Complete all roadmap items in Roadmap {activePhase.id}, then finish its evaluation exam to unlock the next phase.
+        </div>
+      )}
+
       {error && (
-        <div className="mb-4 rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
+        <div className="mb-6 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      <div className="relative space-y-4">
-        <div className="absolute bottom-0 left-5 top-0 w-px bg-border" />
-
-        {phases.map((phase) => {
-          const isLocked = phase.status === "locked";
-          const isActive = phase.status === "active";
-          const isCompleted = phase.status === "completed";
-
-          return (
-            <div key={phase.id} className="relative pl-12">
-              <div
-                className={cn(
-                  "absolute left-3 top-4 flex h-5 w-5 items-center justify-center rounded-full border-2",
-                  isCompleted && "border-emerald-500 bg-emerald-500 text-white",
-                  isActive && "border-primary bg-primary text-primary-foreground",
-                  isLocked && "border-border bg-muted text-muted-foreground"
-                )}
-              >
-                {isCompleted ? (
-                  <RiCheckLine className="h-3 w-3" />
-                ) : isLocked ? (
-                  <RiLockLine className="h-2.5 w-2.5" />
-                ) : (
-                  <span className="text-[10px] font-bold">{phase.id}</span>
-                )}
+      {activePhase && (
+        <Card className="mb-8 border border-primary/20 bg-primary/5 shadow-none">
+          <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+                  Current Version
+                </Badge>
+                <span className="text-sm text-muted-foreground">Roadmap {activePhase.id}</span>
+                <Badge variant="outline" className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+                  {getPhaseCompletedCount(activePhase)}/{roadmapSections.reduce((sum, section) => sum + (activePhase.topics[`${section.key}_topics` as const]?.length ?? 0), 0)} Items Done
+                </Badge>
+                <Badge
+                  variant={getPhaseEvaluationState(activePhase) === "completed" ? "default" : "secondary"}
+                  className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]"
+                >
+                  {getPhaseEvaluationState(activePhase) === "completed"
+                    ? "Evaluation Done"
+                    : getPhaseEvaluationState(activePhase) === "ready"
+                      ? "Exam Unlocked"
+                      : "Practice In Progress"}
+                </Badge>
               </div>
+              <h2 className="text-2xl font-semibold">{activePhase.title}</h2>
+              <p className="max-w-3xl text-[15px] leading-7 text-foreground/85">
+                {activePhase.description}
+              </p>
+            </div>
+            <Button asChild size="lg" className="h-11 px-5 text-base">
+              <Link to={`/app/roadmap/${activePhase.id}`}>
+                Open Current Roadmap
+                <RiArrowRightLine className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
+      <div className="space-y-4">
+        {phases
+          .slice()
+          .reverse()
+          .map((phase) => {
+            const isActive = phase.status === "active";
+
+            return (
               <Card
+                key={phase.id}
                 className={cn(
-                  "transition-all",
-                  isLocked && "opacity-50",
-                  isActive && "border-primary/30 shadow-sm"
+                  "border shadow-none transition-colors",
+                  isActive ? "border-primary/30 bg-card" : "border-border bg-card/90"
                 )}
               >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-base">{phase.title}</CardTitle>
-                        {isCompleted && (
-                          <Badge className="bg-emerald-500/10 text-xs text-emerald-600">
-                            Completed
-                          </Badge>
-                        )}
-                        {isActive && (
-                          <Badge className="bg-primary/10 text-xs text-primary">Active</Badge>
-                        )}
-                        {isLocked && (
-                          <Badge variant="secondary" className="text-xs">
-                            Locked
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{phase.description}</p>
-                    </div>
-                    {phase.quizScore != null && (
-                      <div className="text-right">
-                        <div className="text-xs text-muted-foreground">Quiz</div>
-                        <div
-                          className={cn(
-                            "text-lg font-bold",
-                            phase.quizScore >= 60 ? "text-emerald-600" : "text-amber-600"
-                          )}
+                <CardHeader className="space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={isActive ? "default" : "secondary"}
+                          className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]"
                         >
-                          {phase.quizScore}%
-                        </div>
+                          {isActive ? "Current" : "Saved"}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">Roadmap {phase.id}</span>
+                        <Badge variant="outline" className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+                          {getPhaseCompletedCount(phase)}/{roadmapSections.reduce((sum, section) => sum + (phase.topics[`${section.key}_topics` as const]?.length ?? 0), 0)} Items Done
+                        </Badge>
+                        <Badge
+                          variant={getPhaseEvaluationState(phase) === "completed" ? "default" : "secondary"}
+                          className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]"
+                        >
+                          {getPhaseEvaluationState(phase) === "completed"
+                            ? "Evaluation Done"
+                            : getPhaseEvaluationState(phase) === "ready"
+                              ? "Exam Unlocked"
+                              : "Practice In Progress"}
+                        </Badge>
                       </div>
-                    )}
+                      <CardTitle className="text-2xl font-semibold">{phase.title}</CardTitle>
+                      <p className="max-w-3xl text-[15px] leading-7 text-muted-foreground">
+                        {phase.description}
+                      </p>
+                    </div>
+
+                    <Button asChild variant="outline" size="lg" className="h-11 px-5 text-base">
+                      <Link to={`/app/roadmap/${phase.id}`}>
+                        View Details
+                        <RiArrowRightLine className="h-4 w-4" />
+                      </Link>
+                    </Button>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {phase.topics.speaking_topics.length > 0 && (
-                      <Badge variant="secondary" className="gap-1 text-xs">
-                        <RiMicLine className="h-3 w-3" />
-                        {phase.topics.speaking_topics.length} Speaking
-                      </Badge>
-                    )}
-                    {phase.topics.writing_topics.length > 0 && (
-                      <Badge variant="secondary" className="gap-1 text-xs">
-                        <RiEdit2Line className="h-3 w-3" />
-                        {phase.topics.writing_topics.length} Writing
-                      </Badge>
-                    )}
-                    {phase.topics.reading_topics.length > 0 && (
-                      <Badge variant="secondary" className="gap-1 text-xs">
-                        <RiBookOpenLine className="h-3 w-3" />
-                        {phase.topics.reading_topics.length} Reading
-                      </Badge>
-                    )}
-                    {phase.topics.listening_topics.length > 0 && (
-                      <Badge variant="secondary" className="gap-1 text-xs">
-                        <RiHeadphoneLine className="h-3 w-3" />
-                        {phase.topics.listening_topics.length} Listening
-                      </Badge>
-                    )}
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {roadmapSections.map((section) => {
+                      const meta = sectionMeta[section.key];
+                      const count = phase.topics[`${section.key}_topics` as const]?.length ?? 0;
+
+                      return (
+                        <div
+                          key={`${phase.id}-${section.key}`}
+                          className="flex items-center gap-4 border border-border bg-background px-4 py-4"
+                        >
+                          <div
+                            className={cn(
+                              "flex h-11 w-11 items-center justify-center border",
+                              meta.bg,
+                              meta.border
+                            )}
+                          >
+                            <section.icon className={cn("h-5 w-5", meta.color)} />
+                          </div>
+                          <div>
+                            <div className="text-base font-semibold">{section.label}</div>
+                            <div className="text-sm text-muted-foreground">{count} detailed items</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {!isLocked && (
-                    <div className="flex gap-2">
-                      <Button asChild variant="outline" size="sm" className="gap-1.5">
-                        <Link to={`/app/roadmap/${phase.id}`}>
-                          <RiBookOpenLine className="h-3.5 w-3.5" />
-                          View Content
-                        </Link>
-                      </Button>
-                      {isActive && (
-                        <Button
-                          size="sm"
-                          className="gap-1.5"
-                          onClick={() => handleStartQuiz(phase.id)}
-                        >
-                          <RiQuestionLine className="h-3.5 w-3.5" />
-                          Take Evaluation
-                        </Button>
-                      )}
-                      {isCompleted && phase.quizScore != null && phase.quizScore < 100 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5 text-muted-foreground"
-                          onClick={() => handleStartQuiz(phase.id)}
-                        >
-                          <RiPlayLine className="h-3.5 w-3.5" />
-                          Retake Quiz
-                        </Button>
-                      )}
+                  {phase.topics.study_plan_notes && (
+                    <div className="border border-border bg-muted/20 p-4 text-[15px] leading-7 text-foreground/85">
+                      {phase.topics.study_plan_notes}
                     </div>
                   )}
                 </CardContent>
               </Card>
-            </div>
-          );
-        })}
-
-        {phases.every((phase) => phase.status === "completed") && (
-          <div className="relative pl-12">
-            <div className="absolute left-3 top-4 flex h-5 w-5 items-center justify-center rounded-full border-2 border-dashed border-primary/50">
-              <RiStarLine className="h-2.5 w-2.5 text-primary" />
-            </div>
-            <Card className="border-dashed border-primary/30">
-              <CardContent className="flex items-center justify-between py-4">
-                <div>
-                  <p className="text-sm font-medium">Ready for the next phase?</p>
-                  <p className="text-xs text-muted-foreground">
-                    AI will generate new topics based on your progress
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={handleGenerate}
-                  disabled={generating}
-                >
-                  {generating ? (
-                    <RiLoader4Line className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RiFlashlightLine className="h-3.5 w-3.5" />
-                  )}
-                  Generate
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+            );
+          })}
       </div>
-
-      <Dialog open={quizPhaseId != null} onOpenChange={(open) => { if (!open) handleCloseQuiz(); }}>
-        <DialogContent className="sm:max-w-lg">
-          {!quizComplete && currentQuiz ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-base">
-                  Phase Evaluation - Question {quizIndex + 1} of {totalQuizQuestions}
-                </DialogTitle>
-                <DialogDescription className="sr-only">Answer the quiz question</DialogDescription>
-              </DialogHeader>
-
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${((quizIndex + 1) / totalQuizQuestions) * 100}%` }}
-                />
-              </div>
-
-              <div className="py-2">
-                <p className="mb-4 text-sm font-medium leading-relaxed">{currentQuiz.question}</p>
-                <div className="space-y-2">
-                  {currentQuiz.options.map((option, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleQuizAnswer(index)}
-                      className="w-full rounded-lg border border-border/50 p-3 text-left text-sm transition-all hover:border-primary hover:bg-primary/5"
-                    >
-                      <span className="mr-2 font-medium text-muted-foreground">
-                        {String.fromCharCode(65 + index)}.
-                      </span>
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : quizComplete ? (
-            <>
-              <DialogHeader className="text-center sm:text-center">
-                <div
-                  className={cn(
-                    "mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full",
-                    quizScore >= 60 ? "bg-emerald-500/10" : "bg-amber-500/10"
-                  )}
-                >
-                  {quizScore >= 60 ? (
-                    <RiTrophyLine className="h-8 w-8 text-emerald-600" />
-                  ) : (
-                    <RiQuestionLine className="h-8 w-8 text-amber-600" />
-                  )}
-                </div>
-                <DialogTitle className="text-xl">
-                  {quizScore >= 60 ? "Phase Complete!" : "Not quite yet"}
-                </DialogTitle>
-                <DialogDescription>
-                  {quizScore >= 60
-                    ? `You scored ${quizScore}% - the next phase is now unlocked!`
-                    : `You scored ${quizScore}%. Review the phase content and try again (60% needed).`}
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button className="w-full" onClick={handleCloseQuiz}>
-                  {quizScore >= 60 ? "Continue" : "Review & Retry"}
-                </Button>
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import socket
 import time
+import shutil
 from contextlib import closing
 from pathlib import Path
 from urllib.error import URLError
@@ -44,6 +45,18 @@ def stop_process(proc: subprocess.Popen) -> None:
         proc.wait(timeout=5)
 
 
+def find_preferred_executable(root_dir: Path, name: str) -> str | None:
+    """Prefer repo-local virtualenv executables before falling back to PATH."""
+    candidates = [
+        root_dir / ".venv" / "Scripts" / f"{name}.exe",
+        root_dir / ".venv" / "bin" / name,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which(name)
+
+
 def main():
     """Run development servers."""
     root_dir = Path(__file__).parent
@@ -63,6 +76,13 @@ def main():
     
     api_port = env.get("PORT", "8000")
     api_port_int = int(api_port)
+
+    venv_scripts = root_dir / ".venv" / "Scripts"
+    venv_bin = root_dir / ".venv" / "bin"
+    if venv_scripts.exists():
+        env["PATH"] = f"{venv_scripts}{os.pathsep}{env.get('PATH', '')}"
+    elif venv_bin.exists():
+        env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
     
     # Set PYTHONPATH so imports work correctly
     env["PYTHONPATH"] = str(backend_dir)
@@ -91,18 +111,37 @@ def main():
                 print("Stop the process using that port or change PORT before starting the dev server.")
                 return 1
         else:
-            backend_cmd = [
-                sys.executable, "-m", "granian",
-                "app.main:app",               
-                "--interface", "asgi",        
-                "--host", "0.0.0.0",
-                "--port", api_port,
-                "--loop", "auto" if sys.platform == "win32" else "uvloop",           
-                "--reload",                   
-                "--reload-paths", str(backend_dir / "app"),
-                "--reload-ignore-patterns", r".*\\.(sqlite|db|wal|shm)$",
-                # "--log-level", "info",      
-            ]
+            granian_cmd = find_preferred_executable(root_dir, "granian")
+            uvicorn_cmd = find_preferred_executable(root_dir, "uvicorn")
+
+            if granian_cmd:
+                backend_cmd = [
+                    granian_cmd,
+                    "app.main:app",
+                    "--interface", "asgi",
+                    "--host", "0.0.0.0",
+                    "--port", api_port,
+                    "--loop", "auto" if sys.platform == "win32" else "uvloop",
+                    "--reload",
+                    "--reload-paths", str(backend_dir / "app"),
+                    "--reload-ignore-patterns", r".*\\.(sqlite|db|wal|shm)$",
+                ]
+                print("Starting backend with Granian.")
+            elif uvicorn_cmd:
+                backend_cmd = [
+                    uvicorn_cmd,
+                    "app.main:app",
+                    "--host", "0.0.0.0",
+                    "--port", api_port,
+                    "--reload",
+                    "--reload-dir", str(backend_dir / "app"),
+                ]
+                print("Granian not found; starting backend with Uvicorn instead.")
+            else:
+                print("Neither 'granian' nor 'uvicorn' is installed in the current environment.")
+                print("Install project dependencies first, then rerun the dev server.")
+                return 1
+
             backend_proc = subprocess.Popen(
                 backend_cmd,
                 cwd=backend_dir,

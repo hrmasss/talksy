@@ -330,6 +330,7 @@ class ExamService:
         idx = state.get("question_number", 0)
         current_text = state.get("current_question")
         current_type = state.get("current_question_type")
+        current_passage = state.get("current_question_passage")
 
         if not current_text:
             questions_asked = state.get("questions_asked", [])
@@ -337,10 +338,12 @@ class ExamService:
                 latest_question = questions_asked[-1]
                 current_text = latest_question.get("text")
                 current_type = current_type or latest_question.get("type")
+                current_passage = current_passage or latest_question.get("passage")
 
         current_q = {
             "text": current_text or "",
             "type": current_type or "discussion",
+            "passage": current_passage,
         }
 
         section = section or state.get("exam_section") or state.get("section", "")

@@ -210,14 +210,13 @@ class StudyActivitySubmitRequest(BaseSchema):
     time_spent_seconds: int = 0
 
 
-class StudyActivityFeedbackResponse(BaseSchema):
-    """Feedback after submitting a study activity."""
+class StudyActivityCompletionResponse(BaseSchema):
+    """Completion response after submitting a study activity."""
 
     activity_id: UUID
-    band_score: float | None = None
-    feedback: JsonDict = {}
-    is_correct: bool | None = None
-    suggestions: list[str] = []
+    message: str = ""
+    next_steps: list[str] = []
+    saved_response: bool = True
 
 
 # ── Progress Tracking ─────────────────────────────────────────────

@@ -56,7 +56,7 @@ Assess their level and provide per-section estimates."""),
 # ============================================================================
 
 GENERATE_SPEAKING_TOPICS_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are a senior IELTS Speaking examiner creating practice topics.
+    ("system", """You are a senior IELTS Speaking examiner creating detailed practice topics.
 
 Current date: {current_datetime}
 
@@ -76,12 +76,20 @@ BAND SCORE CRITERIA for Speaking:
 • Grammatical Range and Accuracy
 • Pronunciation
 
-Generate {num_topics} practice topics that:
-1. Cover all 3 parts
+Generate EXACTLY {num_topics} practice topics that:
+1. Cover all 3 parts, with at least one topic for Part 2 and one for Part 3
 2. Match the user's target band range ({target_band})
 3. Include current/trending IELTS topics for {current_year}
 4. Provide useful vocabulary hints
 5. Are diverse in theme (don't repeat similar topics)
+6. Feel student-friendly, practical, and ready to study immediately
+7. For each topic, include:
+   - a short practice_focus
+   - a simple answer_framework list
+   - a short common_mistakes list
+8. Keep speaking expectations realistic: one answer should never imply more than 5 minutes of speaking time.
+9. For Part 1 and Part 3, guide answers toward concise development, usually under 1 minute per answer.
+10. For Part 2, keep the framework aligned with a 1-2 minute long turn, not a long speech.
 
 Respond with a JSON array of topic objects."""),
     ("user", """User band range: {band_range}
@@ -97,7 +105,7 @@ Generate {num_topics} speaking practice topics."""),
 # ============================================================================
 
 GENERATE_WRITING_TOPICS_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are a senior IELTS Writing examiner creating practice tasks.
+    ("system", """You are a senior IELTS Writing examiner creating detailed practice tasks.
 
 Current date: {current_datetime}
 
@@ -118,12 +126,15 @@ BAND SCORE CRITERIA for Writing:
 • Lexical Resource
 • Grammatical Range and Accuracy
 
-Generate {num_topics} writing practice tasks that:
+Generate EXACTLY {num_topics} writing practice tasks that:
 1. Cover both Task 1 and Task 2
 2. Match the user's target band range ({target_band})
 3. Include realistic prompts similar to actual IELTS exams
 4. Provide a sample outline and key vocabulary
 5. Cover diverse essay types
+6. Include a student-friendly practice_focus
+7. Include short planning_steps
+8. Include a simple structure_guide that shows how to organise the answer
 
 Respond with a JSON array of task objects."""),
     ("user", """User band range: {band_range}
@@ -139,7 +150,7 @@ Generate {num_topics} writing practice tasks."""),
 # ============================================================================
 
 GENERATE_READING_TOPICS_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are a senior IELTS Reading examiner creating practice themes.
+    ("system", """You are a senior IELTS Reading examiner creating detailed practice themes.
 
 Current date: {current_datetime}
 
@@ -159,11 +170,16 @@ IELTS General Training Reading:
 Common passage themes: science, technology, history, environment, education,
 health, culture, psychology, economics, urban planning.
 
-Generate {num_topics} reading passage themes that:
+Generate EXACTLY {num_topics} reading passage topics that:
 1. Match the user's band range ({target_band})
 2. Suggest appropriate question types for each
 3. Cover diverse academic subjects
 4. Reflect realistic exam difficulty
+5. Include a short passage_summary for the learner
+6. Include a practical practice_focus
+7. Include simple strategy_steps
+8. Include vocabulary_hints related to the passage theme
+9. Make the output feel like study material, not just labels
 
 Respond with a JSON array of reading topic objects."""),
     ("user", """User band range: {band_range}
@@ -178,7 +194,7 @@ Generate {num_topics} reading practice themes."""),
 # ============================================================================
 
 GENERATE_LISTENING_TOPICS_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are a senior IELTS Listening examiner creating practice scenarios.
+    ("system", """You are a senior IELTS Listening examiner creating detailed practice scenarios.
 
 Current date: {current_datetime}
 
@@ -192,11 +208,15 @@ IELTS Listening test:
 • Section 4: Academic lecture/monologue.  Most demanding.
   Question types: sentence completion, summary completion, multiple choice.
 
-Generate {num_topics} listening scenarios that:
-1. Cover all 4 sections
+Generate EXACTLY {num_topics} listening scenarios that:
+1. Cover all 4 sections with one scenario for each section
 2. Match the user's target band range ({target_band})
 3. Suggest appropriate question types
 4. Include realistic everyday + academic scenarios
+5. Include a short audio_context for each scenario
+6. Include a list of details the learner should listen_for
+7. Include simple strategy_steps
+8. Include vocabulary_hints related to the scenario
 
 Respond with a JSON array of scenario objects."""),
     ("user", """User band range: {band_range}

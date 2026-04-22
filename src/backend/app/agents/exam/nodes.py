@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import json
-import re
+import asyncio
 from typing import Literal
 
 from app.config import settings
 from app.core.logging import logger
 from app.memory.service import memory_service
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ..common.llm import get_llm
-from .models import AnswerEvaluation, FinalExamReport
+from .models import AnswerEvaluation, ExamQuestion, FinalExamReport
 from .prompts import (
     get_answer_evaluation_prompt,
     get_final_evaluation_prompt,
@@ -87,6 +86,123 @@ def _content_to_text(content: object) -> str:
     return str(content).strip()
 
 
+def _part_for_question(section: str, question_number: int) -> int:
+    """Determine IELTS part/task number for a zero-based question index."""
+    if section == "speaking":
+        if question_number < 4:
+            return 1
+        if question_number < 5:
+            return 2
+        return 3
+    if section == "writing":
+        return 1 if question_number < 1 else 2
+    return 1
+
+
+def _default_question_type(section: str, part: int) -> str:
+    """Return a sane default question type based on section and part."""
+    if section == "speaking":
+        if part == 1:
+            return "interview"
+        if part == 2:
+            return "cue_card"
+        return "discussion"
+    if section == "writing":
+        return f"task_{part}"
+    return "discussion"
+
+
+def _system_prompt_for_question(
+    *,
+    section: str,
+    difficulty: str,
+    target_band: str,
+    total_questions: int,
+    exam_variant: str,
+    question_number: int,
+) -> str:
+    """Build section-specific examiner prompt for one specific question."""
+    part = _part_for_question(section, question_number)
+    if section == "speaking":
+        return get_speaking_examiner_prompt(
+            difficulty_level=difficulty,
+            target_band=target_band,
+            total_questions=total_questions,
+            current_part=part,
+            question_number=question_number,
+        )
+    if section == "writing":
+        return get_writing_examiner_prompt(
+            difficulty_level=difficulty,
+            target_band=target_band,
+            task_number=part,
+            exam_variant=exam_variant,
+        )
+    if section == "reading":
+        return get_reading_examiner_prompt(
+            difficulty_level=difficulty,
+            target_band=target_band,
+            total_questions=total_questions,
+            question_number=question_number,
+            exam_variant=exam_variant,
+        )
+    return get_listening_examiner_prompt(
+        difficulty_level=difficulty,
+        target_band=target_band,
+        total_questions=total_questions,
+        question_number=question_number,
+    )
+
+
+async def _generate_structured_question(
+    *,
+    section: str,
+    difficulty: str,
+    target_band: str,
+    total_questions: int,
+    exam_variant: str,
+    question_number: int,
+) -> dict:
+    """Generate one exam question using strict structured output."""
+    part = _part_for_question(section, question_number)
+    sys_prompt = _system_prompt_for_question(
+        section=section,
+        difficulty=difficulty,
+        target_band=target_band,
+        total_questions=total_questions,
+        exam_variant=exam_variant,
+        question_number=question_number,
+    )
+
+    llm = get_llm(model=settings.groq_model, temperature=0.8)
+    structured = llm.with_structured_output(ExamQuestion)
+    user_prompt = (
+        f"Generate ONLY question #{question_number + 1} of {total_questions} for IELTS {section}. "
+        "Return exactly one structured question object. Keep wording concise, natural, "
+        "and appropriate for the requested level and target band."
+    )
+    question: ExamQuestion = await structured.ainvoke(
+        [
+            SystemMessage(content=sys_prompt),
+            HumanMessage(content=user_prompt),
+        ]
+    )
+    data = question.model_dump()
+
+    question_type = data.get("question_type") or _default_question_type(section, part)
+    return {
+        "number": question_number + 1,
+        "part": part,
+        "type": question_type,
+        "text": data.get("question_text", "").strip(),
+        "passage": data.get("passage"),
+        "options": data.get("options") or [],
+        "time_limit_seconds": data.get("time_limit_seconds"),
+        "cue_card": data.get("cue_card"),
+        "scoring_notes": data.get("scoring_notes"),
+    }
+
+
 # ============================================================================
 # 1. Initialise Exam
 # ============================================================================
@@ -148,38 +264,14 @@ async def initialise_exam_node(state: ExamState) -> dict:
             logger.warning("Activity log skipped: {}", exc)
 
     part = 1
-    if section == "speaking":
-        sys_prompt = get_speaking_examiner_prompt(
-            difficulty_level=difficulty,
-            target_band=target_band,
-            total_questions=total_q,
-            current_part=part,
-            question_number=0,
-        )
-    elif section == "writing":
-        sys_prompt = get_writing_examiner_prompt(
-            difficulty_level=difficulty,
-            target_band=target_band,
-            task_number=1,
-            exam_variant=variant,
-        )
-    else:
-        # reading / listening
-        if section == "reading":
-            sys_prompt = get_reading_examiner_prompt(
-                difficulty_level=difficulty,
-                target_band=target_band,
-                total_questions=total_q,
-                question_number=0,
-                exam_variant=variant,
-            )
-        else:
-            sys_prompt = get_listening_examiner_prompt(
-                difficulty_level=difficulty,
-                target_band=target_band,
-                total_questions=total_q,
-                question_number=0,
-            )
+    sys_prompt = _system_prompt_for_question(
+        section=section,
+        difficulty=difficulty,
+        target_band=target_band,
+        total_questions=total_q,
+        exam_variant=variant,
+        question_number=0,
+    )
 
     # Append user memory context so the LLM can personalise
     if memory_context:
@@ -200,11 +292,51 @@ async def initialise_exam_node(state: ExamState) -> dict:
             "used prompts.\n"
         )
 
+    # Generate all exam questions up front so gameplay can return one-by-one
+    # without per-question LLM latency.
+    max_parallel = max(1, min(6, int(total_q)))
+    semaphore = asyncio.Semaphore(max_parallel)
+
+    async def _generate_one(question_number: int) -> dict:
+        async with semaphore:
+            try:
+                return await _generate_structured_question(
+                    section=section,
+                    difficulty=difficulty,
+                    target_band=str(target_band),
+                    total_questions=int(total_q),
+                    exam_variant=variant,
+                    question_number=question_number,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Question pre-generation failed for Q{}: {}",
+                    question_number + 1,
+                    exc,
+                )
+                fallback_part = _part_for_question(section, question_number)
+                return {
+                    "number": question_number + 1,
+                    "part": fallback_part,
+                    "type": _default_question_type(section, fallback_part),
+                    "text": f"Please answer IELTS {section} question {question_number + 1}.",
+                    "passage": None,
+                    "options": [],
+                    "time_limit_seconds": None,
+                    "cue_card": None,
+                    "scoring_notes": None,
+                }
+
+    question_bank = await asyncio.gather(
+        *(_generate_one(i) for i in range(int(total_q)))
+    )
+
     return {
         "messages": [SystemMessage(content=sys_prompt)],
         "target_band": target_band,
         "total_questions": total_q,
         "question_number": 0,
+        "question_bank": question_bank,
         "questions_asked": [],
         "candidate_answers": [],
         "performance_scores": [],
@@ -220,79 +352,20 @@ async def initialise_exam_node(state: ExamState) -> dict:
 # ============================================================================
 
 async def generate_question_node(state: ExamState) -> dict:
-    """Ask the LLM to produce the next IELTS question."""
+    """Set the next question from the pre-generated question bank."""
     section = state.get("exam_section", "speaking")
     qn = state.get("question_number", 0)
     total = state.get("total_questions", 8)
-    target_band = state.get("target_band", "6.0-7.0")
-    difficulty = state.get("difficulty_level", "intermediate")
-    variant = state.get("exam_variant", "academic")
 
     if qn >= total:
         return {"should_continue": False}
 
-    part = _current_part(state)
+    question_bank = state.get("question_bank", [])
+    selected = question_bank[qn] if qn < len(question_bank) else None
 
-    # Build / refresh the system prompt for the current part
-    if section == "speaking":
-        sys_prompt = get_speaking_examiner_prompt(
-            difficulty_level=difficulty,
-            target_band=target_band,
-            total_questions=total,
-            current_part=part,
-            question_number=qn,
-        )
-    elif section == "writing":
-        task_num = 1 if qn == 0 else 2
-        part = task_num
-        sys_prompt = get_writing_examiner_prompt(
-            difficulty_level=difficulty,
-            target_band=target_band,
-            task_number=task_num,
-            exam_variant=variant,
-        )
-    else:
-        if section == "reading":
-            sys_prompt = get_reading_examiner_prompt(
-                difficulty_level=difficulty,
-                target_band=target_band,
-                total_questions=total,
-                question_number=qn,
-                exam_variant=variant,
-            )
-        else:
-            sys_prompt = get_listening_examiner_prompt(
-                difficulty_level=difficulty,
-                target_band=target_band,
-                total_questions=total,
-                question_number=qn,
-            )
-
-    llm = get_llm(model=settings.gemini_model, temperature=0.8)
-
-    # We keep full message history so the LLM avoids repeating topics
-    messages = list(state.get("messages", []))
-
-    # Inject an updated system message
-    non_system = [m for m in messages if not isinstance(m, SystemMessage)]
-    messages = [SystemMessage(content=sys_prompt)] + non_system
-
-    # Gemini requires at least one user message in the contents
-    if not non_system:
-        messages.append(HumanMessage(content="Please begin the exam and ask the first question."))
-
-    response = await llm.ainvoke(messages)
-    question_text = _content_to_text(response.content)
-
-    # Determine question type
-    q_type = "discussion"
-    if section == "speaking":
-        if part == 2:
-            q_type = "cue_card"
-        elif part == 1:
-            q_type = "interview"
-    elif section == "writing":
-        q_type = f"task_{part}"
+    part = selected.get("part") if selected else _current_part(state)
+    question_text = (selected or {}).get("text") or ""
+    q_type = (selected or {}).get("type") or _default_question_type(section, part)
 
     # Determine phase
     if qn <= 1:
@@ -303,22 +376,30 @@ async def generate_question_node(state: ExamState) -> dict:
         phase = "main"
 
     questions_asked = list(state.get("questions_asked", []))
-    questions_asked.append({
+    question_data = {
         "number": qn + 1,
         "part": part,
         "type": q_type,
         "text": question_text,
-    })
+        "passage": (selected or {}).get("passage"),
+        "options": (selected or {}).get("options", []),
+        "time_limit_seconds": (selected or {}).get("time_limit_seconds"),
+        "cue_card": (selected or {}).get("cue_card"),
+    }
+    questions_asked.append(question_data)
 
     logger.info("Q{}/{} [Part {}] {}: {}...", qn + 1, total, part, q_type, question_text[:80])
 
     return {
-        "messages": [response],
+        "messages": [AIMessage(content=question_text)],
         "current_question": question_text,
         "current_question_type": q_type,
+        "current_question_passage": question_data.get("passage"),
         "current_part": part,
         "current_phase": phase,
         "questions_asked": questions_asked,
+        "current_question_options": question_data.get("options", []),
+        "current_question_time_limit_seconds": question_data.get("time_limit_seconds"),
         "should_continue": True,
     }
 
@@ -331,6 +412,7 @@ async def process_answer_node(state: ExamState) -> dict:
     """Store the candidate's answer and update bookkeeping."""
     answer = state.get("current_answer", "")
     question = state.get("current_question", "")
+    question_passage = state.get("current_question_passage")
     qn = state.get("question_number", 0)
     part = state.get("current_part", 1)
     q_type = state.get("current_question_type", "unknown")
@@ -342,6 +424,7 @@ async def process_answer_node(state: ExamState) -> dict:
     candidate_answers = list(state.get("candidate_answers", []))
     record = {
         "question": question,
+        "passage": question_passage,
         "answer": answer,
         "part": part,
         "question_type": q_type,
@@ -376,11 +459,12 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         section=section,
         part=last.get("part", 1),
         question=last["question"],
+        support_material=last.get("passage"),
         answer=last["answer"],
         target_band=target_band,
     )
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.3)
+    llm = get_llm(model=settings.groq_model, temperature=0.3)
 
     try:
         structured = llm.with_structured_output(AnswerEvaluation)
@@ -389,15 +473,22 @@ async def evaluate_answer_node(state: ExamState) -> dict:
         )
         eval_data = evaluation.model_dump()
         eval_data["question_number"] = last["question_number"]
-    except Exception:
-        logger.warning("Structured eval failed")
-        # Fallback: try raw JSON parse
-        try:
-            raw = await llm.ainvoke([HumanMessage(content=eval_prompt)])
-            match = re.search(r"\{.*\}", raw.content, re.DOTALL)
-            eval_data = json.loads(match.group()) if match else {"band_score": 5.0}
-        except Exception:
-            eval_data = {"band_score": 5.0, "feedback": "Evaluation failed"}
+    except Exception as exc:
+        logger.warning("Structured eval failed: {}", exc)
+        fallback = AnswerEvaluation(
+            question_number=last["question_number"],
+            band_score=5.0,
+            task_achievement=5.0,
+            coherence_cohesion=5.0,
+            lexical_resource=5.0,
+            grammatical_range=5.0,
+            pronunciation=5.0 if section == "speaking" else None,
+            strengths=[],
+            weaknesses=["Could not evaluate automatically"],
+            suggestions=["Retry answer evaluation"],
+            feedback="Evaluation failed. A default score was assigned.",
+        )
+        eval_data = fallback.model_dump()
 
     score = eval_data.get("band_score", 5.0)
     last["evaluation"] = eval_data
@@ -442,7 +533,7 @@ async def final_evaluation_node(state: ExamState) -> dict:
         difficulty_level=difficulty,
     )
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.2)
+    llm = get_llm(model=settings.groq_model, temperature=0.2)
 
     try:
         structured = llm.with_structured_output(FinalExamReport)
@@ -450,19 +541,20 @@ async def final_evaluation_node(state: ExamState) -> dict:
             [HumanMessage(content=prompt)]
         )
         data = report.model_dump()
-    except Exception:
-        logger.warning("Structured final eval failed, trying raw")
-        try:
-            raw = await llm.ainvoke([HumanMessage(content=prompt)])
-            match = re.search(r"\{.*\}", raw.content, re.DOTALL)
-            data = json.loads(match.group()) if match else {}
-        except Exception:
-            scores = state.get("performance_scores", [])
-            avg = sum(scores) / len(scores) if scores else 5.0
-            data = {
-                "overall_band": round(avg * 2) / 2,
-                "final_report_markdown": "Evaluation completed. Check individual scores.",
-            }
+    except Exception as exc:
+        logger.warning("Structured final eval failed: {}", exc)
+        scores = state.get("performance_scores", [])
+        avg = sum(scores) / len(scores) if scores else 5.0
+        fallback_report = FinalExamReport(
+            individual_evaluations=[],
+            section_scores=[],
+            overall_band=round(avg * 2) / 2,
+            strengths=[],
+            weaknesses=["Could not generate final structured evaluation"],
+            recommendations=["Retry final evaluation"],
+            final_report_markdown="Evaluation completed with fallback scoring.",
+        )
+        data = fallback_report.model_dump()
 
     overall = data.get("overall_band", 5.0)
     report_md = data.get("final_report_markdown", "")

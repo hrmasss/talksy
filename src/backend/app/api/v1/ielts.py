@@ -22,7 +22,7 @@ from app.schemas.ielts import (
     PlacementResultResponse,
     PlacementStartRequest,
     ProgressOverviewResponse,
-    StudyActivityFeedbackResponse,
+    StudyActivityCompletionResponse,
     StudyActivitySubmitRequest,
     TestHistoryResponse,
 )
@@ -57,6 +57,17 @@ def _normalize_mock_question_type(question: object) -> str:
         if isinstance(value, str) and value.strip():
             return value
     return "discussion"
+
+
+def _normalize_mock_question_passage(question: object) -> str | None:
+    """Extract optional support material from a mock-test payload."""
+    if isinstance(question, dict):
+        value = question.get("passage")
+        if isinstance(value, str):
+            text = value.strip()
+            if text and text.lower() != "none":
+                return text
+    return None
 
 
 async def _store_exam_result_background(
@@ -280,6 +291,7 @@ class IELTSController(Controller):
             question_text=_normalize_mock_question_text(result.get("current_question")),
             question_type=_normalize_mock_question_type(result.get("current_question")),
             options=[],
+            passage=_normalize_mock_question_passage(result.get("current_question")),
             audio_url=result.get("audio_url"),
         )
 
@@ -341,6 +353,7 @@ class IELTSController(Controller):
             question_text=_normalize_mock_question_text(result.get("current_question")),
             question_type=_normalize_mock_question_type(result.get("current_question")),
             options=[],
+            passage=_normalize_mock_question_passage(result.get("current_question")),
             audio_url=result.get("audio_url"),
         )
 
@@ -419,6 +432,7 @@ class IELTSController(Controller):
             question_text=_normalize_mock_question_text(result.get("current_question")),
             question_type=_normalize_mock_question_type(result.get("current_question")),
             options=[],
+            passage=_normalize_mock_question_passage(result.get("current_question")),
             audio_url=result.get("audio_url"),
         )
 
@@ -483,7 +497,7 @@ class IELTSController(Controller):
     )
     async def submit_activity(
         self, data: StudyActivitySubmitRequest
-    ) -> StudyActivityFeedbackResponse:
+    ) -> StudyActivityCompletionResponse:
         result = await ielts_service.submit_activity_response(
             activity_id=data.activity_id,
             user_response=data.response,
@@ -491,7 +505,7 @@ class IELTSController(Controller):
         )
         if result.get("error"):
             raise NotFoundException(detail=result["error"])
-        return StudyActivityFeedbackResponse(**result)
+        return StudyActivityCompletionResponse(**result)
 
     # ── Progress Tracking ─────────────────────────────────────
 

@@ -77,6 +77,9 @@ def get_writing_examiner_prompt(
     """System prompt for generating an IELTS Writing task."""
     now = datetime.now(ZoneInfo("UTC"))
 
+    task_type = f"task_{task_number}"
+    task_time = 20 * 60 if task_number == 1 else 40 * 60
+
     task1_academic = (
         "Task 1 (Academic): Present visual data – bar chart, line graph, pie chart, "
         "table, process diagram, or map. Ask the candidate to summarise the information "
@@ -112,10 +115,26 @@ WRITING ASSESSMENT CRITERIA (each scored 0-9):
 Generate a realistic IELTS Writing Task {task_number} prompt that:
 1. Matches the target band difficulty
 2. Is similar in style to official IELTS tasks
-3. For Task 1 Academic: describe the data scenario clearly (you don't need to provide an actual image)
-4. For Task 2: provide a clear, debatable statement or question
+3. For Task 1 Academic: ALWAYS include self-contained support material in the `passage` field.
+4. The support material must be useful without an image: include concrete labels, figures, years,
+   categories, process steps, or map changes in plain text or a markdown table.
+5. Never mention a chart, graph, table, process, or map unless the candidate can see enough
+   actual data/details in the `passage` field to write a full answer from it.
+6. For Task 2: provide a clear, debatable statement or question, and set `passage` to null.
 
-Output ONLY the task prompt text. Start with "You should spend about …" as in the real exam."""
+Return a structured object with these fields:
+- section: "writing"
+- part: {task_number}
+- question_text: the full prompt starting with "You should spend about ..."
+- question_type: "{task_type}"
+- passage: support material to display to the candidate, or null
+- time_limit_seconds: {task_time}
+- scoring_notes: a short note about what a strong response should cover
+
+Important:
+- For Academic Task 1, `passage` should look like something the UI can display directly.
+- Good examples include markdown tables, bullet lists of figures, process stages, or map changes.
+- The prompt must be fully answerable from the text you provide."""
 
 
 # ============================================================================
@@ -127,6 +146,7 @@ def get_answer_evaluation_prompt(
     section: str,
     part: int,
     question: str,
+    support_material: str | None,
     answer: str,
     target_band: str,
 ) -> str:
@@ -154,6 +174,9 @@ Target band: {target_band}
 
 QUESTION:
 {question}
+
+SUPPORT MATERIAL:
+{support_material or "None"}
 
 CANDIDATE'S ANSWER:
 {answer}
@@ -198,6 +221,8 @@ def get_final_evaluation_prompt(
     for i, qa in enumerate(candidate_answers, 1):
         qa_text += f"\n{'='*60}\n"
         qa_text += f"Question {i} (Part {qa.get('part', '?')}):\n{qa['question']}\n\n"
+        if qa.get("passage"):
+            qa_text += f"Support Material:\n{qa['passage']}\n\n"
         qa_text += f"Answer:\n{qa['answer']}\n"
         if qa.get("evaluation"):
             qa_text += f"Per-question band: {qa['evaluation'].get('band_score', '?')}\n"

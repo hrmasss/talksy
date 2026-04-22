@@ -94,9 +94,13 @@ class ExamState(TypedDict):
     # --- Question management -----------------------------------------------
     current_question: str | None
     current_question_type: str | None
+    current_question_passage: str | None
     current_part: int | None            # Speaking part or Writing task number
     question_number: int
     questions_asked: list[dict[str, Any]]
+    question_bank: list[dict[str, Any]]
+    current_question_options: list[str] | None
+    current_question_time_limit_seconds: int | None
 
     # --- Answer management -------------------------------------------------
     current_answer: str | None

@@ -98,16 +98,23 @@ export default function DailyStudyPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Daily Study</h1>
-          <p className="text-sm text-muted-foreground">
-            Review the last 7 days of plans and generate today's study.
-          </p>
+    <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
+        <div className="space-y-3">
+          <Badge variant="outline" className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
+            Daily Study
+          </Badge>
+          <div>
+            <h1 className="text-4xl font-semibold tracking-tight">Daily Practice Plan</h1>
+            <p className="mt-2 max-w-3xl text-lg leading-8 text-muted-foreground">
+              Open a clear, beginner-friendly study set for each day. Plans focus on
+              vocabulary, listening, reading, writing, and speaking without turning this
+              practice phase into a test.
+            </p>
+          </div>
         </div>
         {!todaysPlan && (
-          <Button onClick={handleGenerate} disabled={generating}>
+          <Button onClick={handleGenerate} disabled={generating} className="h-12 px-6 text-base">
             {generating ? (
               <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -118,83 +125,77 @@ export default function DailyStudyPage() {
         )}
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-5">
         {plans.length > 0 ? (
           plans.map((plan) => (
-            <Card key={plan.id}>
-              <CardHeader className="flex flex-row items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-base">
-                    {plan.study_date === todayKey ? "Today" : plan.study_date}
+            <Card key={plan.id} className="border border-border shadow-none">
+              <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {plan.study_date === todayKey && (
+                      <Badge className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+                        Today
+                      </Badge>
+                    )}
+                    <Badge variant={plan.is_completed ? "default" : "secondary"} className="px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+                      {plan.is_completed ? "Completed" : "In Progress"}
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-2xl font-semibold">
+                    {plan.study_date === todayKey ? "Today's Study Plan" : plan.study_date}
                   </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    {plan.completed_count}/{plan.total_count} completed
+                  <p className="text-sm text-muted-foreground">
+                    {plan.completed_count}/{plan.total_count} activities completed
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {plan.study_date === todayKey && (
-                    <Badge variant="default" className="text-xs">Today</Badge>
-                  )}
-                  <Badge variant={plan.is_completed ? "default" : "secondary"} className="text-xs">
-                    {plan.is_completed ? "Completed" : "In progress"}
-                  </Badge>
-                  <Button size="sm" variant="outline" asChild>
-                    <Link to={`/app/daily-study/${plan.id}`}>
-                      Details
-                      <RiArrowRightLine className="ml-2 h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
-                </div>
+                <Button size="lg" variant="outline" asChild className="h-11 px-5 text-base">
+                  <Link to={`/app/daily-study/${plan.id}`}>
+                    Open Plan
+                    <RiArrowRightLine className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-5">
                 {plan.ai_rationale && (
-                  <p className="text-sm text-muted-foreground">{plan.ai_rationale}</p>
-                )}
-                <div className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {plan.activities.slice(0, 4).map((activity) => {
-                      const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
-                      return (
-                        <Link
-                          key={activity.id}
-                          to={`/app/daily-study/${plan.id}?activityId=${activity.id}`}
-                          className={cn(
-                            "flex items-center gap-3 rounded-lg border border-border/50 p-2.5 transition-all hover:border-primary/50 hover:bg-accent/30",
-                            activity.is_completed && "opacity-60"
-                          )}
-                        >
-                          <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", meta.bg)}>
-                            <meta.icon className={cn("h-4 w-4", meta.color)} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium">{activity.title}</div>
-                            <div className="text-xs capitalize text-muted-foreground">
-                              {activity.section}
-                            </div>
-                          </div>
-                          <RiArrowRightLine className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                        </Link>
-                      );
-                    })}
+                  <div className="border border-border bg-muted/20 p-4 text-[15px] leading-7 text-foreground/85">
+                    {plan.ai_rationale}
                   </div>
-                  {plan.activities.length > 4 && (
-                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-primary" asChild>
-                      <Link to={`/app/daily-study/${plan.id}`}>
-                        View all {plan.activities.length} activities
-                        <RiArrowRightLine className="ml-1 h-3 w-3" />
-                      </Link>
-                    </Button>
-                  )}
-                </div>
+                )}
 
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {plan.activities.map((activity) => {
+                    const meta = sectionMeta[activity.section] || sectionMeta.vocabulary;
+                    return (
+                      <Link
+                        key={activity.id}
+                        to={`/app/daily-study/${plan.id}?activityId=${activity.id}`}
+                        className={cn(
+                          "group flex items-center gap-4 border border-border bg-background px-4 py-4 transition-colors hover:border-primary/40 hover:bg-accent/20",
+                          activity.is_completed && "border-emerald-200 bg-emerald-50/40"
+                        )}
+                      >
+                        <div className={cn("flex h-11 w-11 items-center justify-center border", meta.bg)}>
+                          <meta.icon className={cn("h-5 w-5", meta.color)} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-base font-semibold">{activity.title}</div>
+                          <div className="text-sm capitalize text-muted-foreground">
+                            {activity.section.replace("_", " ")}
+                          </div>
+                        </div>
+                        <RiArrowRightLine className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                      </Link>
+                    );
+                  })}
+                </div>
               </CardContent>
             </Card>
           ))
         ) : (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">
-                No study plans yet. Generate today's plan to get started.
+          <Card className="border border-border shadow-none">
+            <CardContent className="py-16 text-center">
+              <p className="text-lg text-muted-foreground">
+                No study plans yet. Generate today&apos;s plan to get started.
               </p>
             </CardContent>
           </Card>
@@ -206,8 +207,9 @@ export default function DailyStudyPage() {
               variant="outline"
               onClick={() => setDaysToLoad((prev) => Math.min(prev + 7, 365))}
               disabled={!hasMore}
+              className="h-11 px-5 text-base"
             >
-              {hasMore ? "Load previous 7 days" : "No more plans"}
+              {hasMore ? "Load Previous 7 Days" : "No More Plans"}
             </Button>
           </div>
         )}

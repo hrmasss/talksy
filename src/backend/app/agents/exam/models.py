@@ -21,6 +21,13 @@ class ExamQuestion(BaseModel):
     question_type: str = Field(
         description="e.g. 'cue_card', 'discussion', 'essay', 'multiple_choice', …"
     )
+    passage: str | None = Field(
+        None,
+        description=(
+            "Reading passage or writing support material shown to the candidate, "
+            "such as chart data, a table, a map description, or process steps"
+        ),
+    )
     time_limit_seconds: int | None = Field(
         None, description="Time limit for this question"
     )

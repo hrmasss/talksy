@@ -25,7 +25,7 @@ class AIService:
     async def generate_response(self, prompt: str, system_prompt: str | None = None) -> str:
         """Generate a response using the LLM."""
         if not self.llm:
-            logger.warning("OpenAI API key not configured, returning mock response")
+            logger.warning("Groq API key not configured, returning mock response")
             return self._mock_response(prompt)
 
         try:

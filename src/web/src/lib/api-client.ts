@@ -35,6 +35,20 @@ export function getApiUrl(path: string): string {
   return `${API_BASE_URL}${normalizedPath}`;
 }
 
+export function getAssetUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    return new URL(normalizedPath, API_BASE_URL).toString();
+  }
+
+  return normalizedPath;
+}
+
 export function getStoredAccessToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
@@ -177,4 +191,13 @@ export async function requestArrayBuffer(path: string, options: RequestOptions =
   }
 
   return response.arrayBuffer();
+}
+
+export async function requestResponse(path: string, options: RequestOptions = {}): Promise<Response> {
+  const response = await apiFetch(path, options);
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response;
 }

@@ -13,10 +13,10 @@ from app.core.logging import logger
 from ..common.llm import get_llm
 from .models import (
     LevelAssessment,
-    ListeningTopic,
-    ReadingTopic,
-    SpeakingTopic,
-    WritingTopic,
+    ListeningTopicList,
+    ReadingTopicList,
+    SpeakingTopicList,
+    WritingTopicList,
 )
 from .prompts import (
     ASSESS_LEVEL_PROMPT,
@@ -36,6 +36,13 @@ def _time_ctx() -> dict:
     }
 
 
+def _limit_topics(items: list[dict[str, Any]] | None, count: int) -> list[dict[str, Any]]:
+    """Keep topic payload sizes predictable for the roadmap UI."""
+    if not items:
+        return []
+    return items[:count]
+
+
 # ============================================================================
 # 1. Assess Level
 # ============================================================================
@@ -44,7 +51,7 @@ async def assess_level_node(state: TopicGeneratorState) -> dict:
     """Estimate the user's IELTS band from their self-description."""
     logger.info("Assessing user IELTS level")
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.5)
+    llm = get_llm(model=settings.groq_model, temperature=0.5)
     structured = llm.with_structured_output(LevelAssessment)
 
     ctx = _time_ctx()
@@ -104,69 +111,47 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
         **ctx,
     }
 
-    llm = get_llm(model=settings.gemini_model, temperature=0.8)
+    llm = get_llm(model=settings.groq_model, temperature=0.8)
 
     # Build section generators ------------------------------------------------
     tasks: dict[str, Any] = {}
 
     if section_focus in (None, "speaking"):
         async def _speaking():
-            # We only really need speaking_topics, so use a minimal model
-            # instead of the full TopicSet and ignore the rest.
-            from pydantic import BaseModel, Field
-
-            class SpeakingList(BaseModel):
-                topics: list[SpeakingTopic] = Field(default_factory=list)
-
-            s_llm2 = llm.with_structured_output(SpeakingList)
+            s_llm2 = llm.with_structured_output(SpeakingTopicList)
             r = await s_llm2.ainvoke(
                 GENERATE_SPEAKING_TOPICS_PROMPT.format_messages(**common)
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["speaking"] = _speaking()
 
     if section_focus in (None, "writing"):
         async def _writing():
-            from pydantic import BaseModel, Field
-
-            class WritingList(BaseModel):
-                topics: list[WritingTopic] = Field(default_factory=list)
-
-            w_llm = llm.with_structured_output(WritingList)
+            w_llm = llm.with_structured_output(WritingTopicList)
             r = await w_llm.ainvoke(
                 GENERATE_WRITING_TOPICS_PROMPT.format_messages(
                     exam_variant=exam_variant, **common
                 )
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["writing"] = _writing()
 
     if section_focus in (None, "reading"):
         async def _reading():
-            from pydantic import BaseModel, Field
-
-            class ReadingList(BaseModel):
-                topics: list[ReadingTopic] = Field(default_factory=list)
-
-            r_llm = llm.with_structured_output(ReadingList)
+            r_llm = llm.with_structured_output(ReadingTopicList)
             r = await r_llm.ainvoke(
                 GENERATE_READING_TOPICS_PROMPT.format_messages(**common)
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["reading"] = _reading()
 
     if section_focus in (None, "listening"):
         async def _listening():
-            from pydantic import BaseModel, Field
-
-            class ListeningList(BaseModel):
-                topics: list[ListeningTopic] = Field(default_factory=list)
-
-            l_llm = llm.with_structured_output(ListeningList)
+            l_llm = llm.with_structured_output(ListeningTopicList)
             r = await l_llm.ainvoke(
                 GENERATE_LISTENING_TOPICS_PROMPT.format_messages(**common)
             )
-            return [t.model_dump() for t in r.topics]
+            return _limit_topics([t.model_dump() for t in r.topics], num_topics)
         tasks["listening"] = _listening()
 
     # Run all in parallel
@@ -183,9 +168,11 @@ async def generate_topics_node(state: TopicGeneratorState) -> dict:
             out[key] = result
             logger.info("{}: {} topics generated", key, len(result))
 
+    weakness_summary = ", ".join(state.get("weaknesses", [])) or "all four IELTS skills"
     study_plan = (
-        f"Focus on your weaknesses: {', '.join(state.get('weaknesses', []))}. "
-        f"Practice each section regularly and time yourself under exam conditions."
+        f"This roadmap gives you four practice items for speaking, writing, reading, and listening. "
+        f"Start with the weaker areas first: {weakness_summary}. "
+        f"Work through each item slowly, take notes on useful language, and focus on understanding the task before worrying about speed."
     )
 
     return {

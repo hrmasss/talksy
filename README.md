@@ -15,7 +15,7 @@ AI-powered mock exam and English conversation practice platform for **IELTS**, *
 ### Backend
 - [Litestar](https://litestar.dev/) - High-performance async Python framework
 - [Piccolo ORM](https://piccolo-orm.com/) - Async-native with migrations
-- [LangChain](https://langchain.com/) + OpenAI for AI features
+- [LangChain](https://langchain.com/) + Groq for AI features
 - Uvicorn server with hot reload
 
 ### Frontend
@@ -85,7 +85,7 @@ cp .env.example .env
 ```
 
 Key environment variables:
-- `GEMINI_API_KEYS` - Required for AI features
+- `GROQ_API_KEY` - Required for AI features
 - `SECRET_KEY` - Change in production
 
 ### Create Admin User
